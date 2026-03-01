@@ -1,0 +1,241 @@
+.history-page {
+  min-height: calc(100vh - 130px);
+  background: var(--surface);
+}
+
+.history-header {
+  padding: 24px 24px 16px;
+  border-bottom: var(--border-light);
+  background: var(--surface-muted);
+}
+
+.history-header h2 {
+  margin: 0;
+  font-size: var(--font-size-base);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.history-header p {
+  margin: 6px 0 0;
+  color: var(--text-light);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.history-gallery-header-bar {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: start;
+  border: var(--border-light);
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.history-gallery-header-bar .settings-note {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+
+.history-gallery-header-bar .button-row {
+  justify-content: flex-end;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.history-gallery-export-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: var(--border-faint);
+  background: var(--surface-muted);
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.history-gallery-export-option input {
+  width: auto;
+}
+
+.history-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px 24px 0;
+}
+
+.history-section {
+  border: var(--border-light);
+  background: var(--surface);
+  padding: 0;
+}
+
+.history-section:last-child {
+  border-right: var(--border-light);
+}
+
+.history-section h3 {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: var(--border-faint);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.history-item {
+  border: var(--border-faint);
+  background: var(--surface);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.history-item img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border: var(--border-light);
+  background: var(--surface-muted);
+}
+
+.history-meta h3 {
+  margin: 0 0 6px;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.history-meta p {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+
+.history-meta textarea {
+  min-height: 82px;
+}
+
+.history-meta .button-row {
+  gap: 6px;
+}
+
+.history-gallery-entry .field-row {
+  margin-bottom: 8px;
+}
+
+.history-gallery-entry textarea {
+  min-height: 84px;
+}
+
+.history-gallery-inspector {
+  margin: 0 24px;
+  border-bottom: var(--border-light);
+  padding: 12px 0 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.history-gallery-items {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-gallery-workspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: var(--border-light);
+  min-height: 420px;
+}
+
+.history-gallery-browser {
+  border-right: var(--border-light);
+  padding: 10px;
+  overflow: auto;
+  max-height: 72vh;
+}
+
+.history-gallery-thumb {
+  border: var(--border-light);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  background: var(--surface);
+}
+
+.history-gallery-thumb.active {
+  border-color: var(--success);
+  background: #eff7f2;
+}
+
+.history-gallery-thumb img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border: var(--border-faint);
+  background: var(--surface-muted);
+}
+
+.history-gallery-thumb p {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  line-height: 1.4;
+}
+
+.history-gallery-thumb-remove {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.history-gallery-details-panel {
+  padding: 14px;
+  overflow: auto;
+  max-height: 72vh;
+}
+
+#historyGalleryPreview {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border: var(--border-light);
+  background: var(--surface-muted);
+}
+
+#historyGalleryTitleInput {
+  width: 100%;
+}

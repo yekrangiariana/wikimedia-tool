@@ -1,0 +1,268 @@
+.search-form label,
+.field-row label {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-label);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+}
+
+.search-options {
+  margin-top: 10px;
+}
+
+.search-filters {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.search-options .field-row {
+  margin-bottom: 0;
+}
+
+.search-options.compact-filter {
+  margin-top: 0;
+}
+
+.search-options.compact-filter label {
+  margin: 0 0 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+}
+
+.search-options.compact-filter select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: var(--font-size-sm);
+}
+
+.experimental-filter {
+  margin-top: 0;
+}
+
+.experimental-filter #photoDateSortSelect {
+  min-width: 0;
+}
+
+.experimental-filter #scanMorePhotoBtn {
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+}
+
+.compact-filter-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.compact-filter-controls > select {
+  flex: 1 1 auto;
+}
+
+.compact-filter-controls > button {
+  flex: 0 0 auto;
+}
+
+.status {
+  margin: 12px 0;
+  color: var(--text-light);
+  min-height: 1.4rem;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--finder-grid-columns), minmax(0, 1fr));
+  gap: 8px;
+}
+
+.results-footer {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.result-item {
+  border: var(--border-light);
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.result-head {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.result-select {
+  width: 16px;
+  height: 16px;
+}
+
+.result-item.active {
+  border-color: var(--success);
+  background: #eff7f2;
+}
+
+.result-item img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border: var(--border-faint);
+  background: var(--surface-muted);
+}
+
+.result-text {
+  min-width: 0;
+}
+
+.result-text h3 {
+  margin: 0 0 2px;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.result-text p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.details {
+  display: grid;
+  gap: 14px;
+}
+
+.details.hidden {
+  display: none;
+}
+
+#detailPreview {
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border: var(--border-light);
+  background: var(--surface-muted);
+}
+
+.meta h2 {
+  margin: 0 0 10px;
+  font-size: var(--font-size-base);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.meta p {
+  margin: 4px 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+}
+
+.meta strong {
+  font-weight: var(--font-weight-label);
+}
+
+.meta a {
+  color: var(--text-light);
+  word-break: break-all;
+}
+
+.generator {
+  border-top: var(--border-light);
+  padding-top: 12px;
+}
+
+.generator h3 {
+  margin: 0 0 12px;
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.gallery-selection-list {
+  display: grid;
+  gap: 8px;
+}
+
+.gallery-item {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  border: var(--border-faint);
+  padding: 6px;
+}
+
+.gallery-item img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border: var(--border-faint);
+  background: var(--surface-muted);
+}
+
+.gallery-item-title {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+}
+
+.gallery-item button {
+  padding: 6px 8px;
+  font-size: var(--font-size-xs);
+}
+
+.action-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%) translateY(90px);
+  background: var(--text);
+  color: #ffffff;
+  border: var(--border);
+  border-color: var(--text);
+  padding: 10px 16px;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  z-index: 120;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 0.25s ease,
+    opacity 0.25s ease;
+}
+
+.action-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}

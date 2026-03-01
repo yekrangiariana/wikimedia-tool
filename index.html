@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>📸 Wikimedia tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>📸 Wikimedia tool</h1>
+      </div>
+      <div class="topbar-actions">
+        <button id="showFinderViewBtn" type="button">Finder</button>
+        <button id="showHistoryViewBtn" type="button">History</button>
+        <button id="openSettingsBtn" type="button">Settings</button>
+      </div>
+    </header>
+
+    <main id="finderView" class="layout">
+      <section class="panel search-panel">
+        <form id="searchForm" class="search-form">
+          <label for="searchInput">Search images</label>
+          <div class="search-row">
+            <input
+              id="searchInput"
+              name="query"
+              type="text"
+              placeholder="e.g. Galápagos giant tortoise"
+              required
+            />
+            <button type="submit">Search</button>
+          </div>
+
+          <div class="search-filters">
+            <div class="search-options compact-filter">
+              <label for="sortSelect">Sort</label>
+              <select id="sortSelect">
+                <option value="relevance">Default</option>
+                <option value="newest">Newest uploaded</option>
+                <option value="oldest">Oldest uploaded</option>
+              </select>
+            </div>
+
+            <div class="search-options compact-filter">
+              <label for="assessmentSelect">Assessment</label>
+              <select id="assessmentSelect">
+                <option value="off">Off</option>
+                <option value="quality">Quality images (community)</option>
+                <option value="featured">Featured pictures (community)</option>
+                <option value="valued">Valued images (community)</option>
+              </select>
+            </div>
+
+            <div class="search-options compact-filter experimental-filter">
+              <label for="photoDateSortSelect">Photo date (exp)</label>
+              <div class="compact-filter-controls">
+                <select id="photoDateSortSelect">
+                  <option value="off">Off</option>
+                  <option value="photo-newest">Newest first</option>
+                  <option value="photo-oldest">Oldest first</option>
+                </select>
+                <button id="scanMorePhotoBtn" type="button" class="hidden">
+                  Scan more
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <div id="status" class="status" aria-live="polite"></div>
+
+        <ul id="results" class="results" aria-label="Search results"></ul>
+
+        <div class="results-footer">
+          <button id="showMoreBtn" type="button" class="hidden">
+            Show more
+          </button>
+        </div>
+      </section>
+
+      <section class="panel details-panel">
+        <button
+          id="detailsToggleBtn"
+          class="mobile-details-toggle"
+          type="button"
+          aria-expanded="false"
+        >
+          Show details panel
+        </button>
+
+        <div id="detailsContent" class="details-content">
+          <div id="emptyState" class="empty-state">
+            Select an image to view details and generate shortcode.
+          </div>
+
+          <article
+            id="galleryDetails"
+            class="details hidden"
+            aria-live="polite"
+          >
+            <div class="generator">
+              <h3>Gallery builder</h3>
+
+              <div class="field-row">
+                <label for="galleryTitleInput">Gallery title</label>
+                <input
+                  id="galleryTitleInput"
+                  type="text"
+                  placeholder="e.g. Europe election day scenes"
+                />
+              </div>
+
+              <div class="field-row">
+                <label for="galleryDescriptionInput">Gallery description</label>
+                <textarea
+                  id="galleryDescriptionInput"
+                  rows="3"
+                  placeholder="Short context for this image set"
+                ></textarea>
+              </div>
+
+              <div class="field-row">
+                <label>Selected pictures</label>
+                <div
+                  id="gallerySelectionList"
+                  class="gallery-selection-list"
+                ></div>
+                <p id="gallerySelectionEmpty" class="settings-note">
+                  Select pictures from search results to build this gallery.
+                </p>
+              </div>
+
+              <div class="button-row">
+                <button id="galleryDoneBtn" type="button">Done</button>
+              </div>
+
+              <p class="settings-note">
+                Gallery is auto-saved to History in the background.
+              </p>
+            </div>
+          </article>
+
+          <article id="details" class="details hidden" aria-live="polite">
+            <img id="detailPreview" alt="Selected Wikimedia image preview" />
+
+            <div class="meta">
+              <h2 id="detailTitle"></h2>
+              <p><strong>Author:</strong> <span id="detailAuthor"></span></p>
+              <p><strong>License:</strong> <span id="detailLicense"></span></p>
+              <p>
+                <strong>Description:</strong>
+                <span id="detailDescription"></span>
+              </p>
+              <p>
+                <strong>Image URL:</strong>
+                <a
+                  id="detailImageUrl"
+                  href="#"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                ></a>
+              </p>
+              <p>
+                <strong>File page:</strong>
+                <a
+                  id="detailFilePage"
+                  href="#"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                ></a>
+              </p>
+            </div>
+
+            <div class="generator">
+              <h3>Hugo shortcode generator</h3>
+
+              <div class="field-row">
+                <label for="layoutSelect">Layout</label>
+                <select id="layoutSelect">
+                  <option value="normal">Normal image</option>
+                  <option value="large">Large image</option>
+                  <option value="xlarge">Extra large image</option>
+                  <option value="custom">Custom width image</option>
+                  <option value="cover">Cover</option>
+                </select>
+              </div>
+
+              <div class="field-row" id="widthRow">
+                <label for="customWidth">Custom width (px)</label>
+                <input
+                  id="customWidth"
+                  type="number"
+                  min="50"
+                  step="10"
+                  value="600"
+                />
+              </div>
+
+              <div class="field-row">
+                <label for="captionInput">Caption</label>
+                <div class="button-row button-row--tight">
+                  <button id="fillDefaultCaptionBtn" type="button">
+                    Default caption
+                  </button>
+                </div>
+                <textarea
+                  id="captionInput"
+                  rows="3"
+                  placeholder="Write your caption text"
+                ></textarea>
+              </div>
+
+              <div class="field-row">
+                <label for="shortcodeOutput">Generated shortcode</label>
+                <textarea id="shortcodeOutput" rows="4" readonly></textarea>
+              </div>
+
+              <div class="button-row">
+                <button id="copyShortcodeBtn" type="button">Copy</button>
+                <button id="downloadImageBtn" type="button">
+                  Download photo
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <main id="historyView" class="panel history-page hidden">
+      <div class="history-header">
+        <h2>Copy History</h2>
+        <p id="historyHeaderSubtitle">
+          Saved items from your copy action for quick reuse.
+        </p>
+
+        <div
+          id="historyGalleryHeaderBar"
+          class="history-gallery-header-bar hidden"
+        >
+          <p id="historyGalleryMeta" class="settings-note"></p>
+          <div class="button-row">
+            <label
+              class="history-gallery-export-option"
+              for="historyGalleryPrefixExportCheckbox"
+            >
+              <input
+                id="historyGalleryPrefixExportCheckbox"
+                type="checkbox"
+                checked
+              />
+              Use gallery folder path
+            </label>
+            <button id="historyGalleryExportAllBtn" type="button">
+              Export all
+            </button>
+            <button id="historyGalleryCopyAllCaptionsBtn" type="button">
+              Copy all captions
+            </button>
+            <button id="historyGalleryCloseBtn" type="button">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <section
+        id="historyGalleryInspector"
+        class="history-gallery-inspector hidden"
+      >
+        <div class="history-gallery-workspace">
+          <div class="history-gallery-browser">
+            <ul id="historyGalleryItems" class="history-gallery-items"></ul>
+          </div>
+
+          <aside class="history-gallery-details-panel">
+            <div id="historyGalleryDetailsEmpty" class="empty-state">
+              Select an image from this gallery to edit caption and shortcode.
+            </div>
+
+            <article id="historyGalleryDetails" class="details hidden">
+              <img id="historyGalleryPreview" alt="Gallery image preview" />
+
+              <div class="meta">
+                <h2 id="historyGalleryItemTitle"></h2>
+              </div>
+
+              <div class="generator">
+                <h3>Per-image shortcode</h3>
+
+                <div class="field-row">
+                  <label for="historyGalleryCaptionInput">Caption</label>
+                  <div class="button-row button-row--tight">
+                    <button
+                      id="historyGalleryFillDefaultCaptionBtn"
+                      type="button"
+                    >
+                      Default caption
+                    </button>
+                  </div>
+                  <textarea
+                    id="historyGalleryCaptionInput"
+                    rows="2"
+                    placeholder="Optional caption prefix"
+                  ></textarea>
+                </div>
+
+                <div class="field-row">
+                  <label for="historyGalleryLayoutSelect">Layout</label>
+                  <select id="historyGalleryLayoutSelect">
+                    <option value="normal">Normal image</option>
+                    <option value="large">Large image</option>
+                    <option value="xlarge">Extra large image</option>
+                    <option value="custom">Custom width image</option>
+                    <option value="cover">Cover</option>
+                  </select>
+                </div>
+
+                <div class="field-row hidden" id="historyGalleryWidthRow">
+                  <label for="historyGalleryWidthInput"
+                    >Custom width (px)</label
+                  >
+                  <input
+                    id="historyGalleryWidthInput"
+                    type="number"
+                    min="50"
+                    step="10"
+                    value="600"
+                  />
+                </div>
+
+                <div class="field-row">
+                  <label for="historyGalleryShortcodeOutput"
+                    >Generated shortcode</label
+                  >
+                  <textarea
+                    id="historyGalleryShortcodeOutput"
+                    rows="4"
+                    readonly
+                  ></textarea>
+                </div>
+
+                <div class="button-row">
+                  <button id="historyGalleryCopyBtn" type="button">
+                    Copy shortcode
+                  </button>
+                </div>
+              </div>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <div id="historyList" class="history-columns">
+        <section class="history-section">
+          <h3>Galleries</h3>
+          <div id="historyGalleryList" class="history-list"></div>
+        </section>
+
+        <section class="history-section">
+          <h3>Single images</h3>
+          <div id="historySingleList" class="history-list"></div>
+        </section>
+      </div>
+      <p id="historyEmpty" class="empty-state">
+        No history yet. Copy a generated output to save it here.
+      </p>
+    </main>
+
+    <aside id="settingsPanel" class="settings-panel hidden" aria-hidden="true">
+      <div class="settings-header">
+        <h2>Settings</h2>
+        <button id="closeSettingsBtn" type="button">Close</button>
+      </div>
+
+      <section class="settings-section">
+        <h3>Finder</h3>
+        <label for="gridColumnsSelect">Result grid columns</label>
+        <select id="gridColumnsSelect">
+          <option value="2">2 columns</option>
+          <option value="3">3 columns</option>
+          <option value="4">4 columns</option>
+        </select>
+
+        <label class="checkbox-inline" for="galleryModeCheckbox">
+          <input id="galleryModeCheckbox" type="checkbox" />
+          Enable gallery mode
+        </label>
+
+        <label for="photoScanPagesSelect">
+          Experimental photo-date scan depth
+        </label>
+        <select id="photoScanPagesSelect">
+          <option value="2">2 pages (fast)</option>
+          <option value="4">4 pages</option>
+          <option value="6">6 pages (default)</option>
+          <option value="8">8 pages</option>
+          <option value="10">10 pages (slow)</option>
+        </select>
+
+        <div class="button-row">
+          <button id="saveSettingsBtn" type="button">Save settings</button>
+        </div>
+      </section>
+
+      <section class="settings-section export-settings-section">
+        <h3>Export</h3>
+        <p id="exportSupportText" class="settings-note"></p>
+        <p id="exportDirStatus" class="settings-note"></p>
+        <div class="export-settings-grid">
+          <div class="settings-field">
+            <label for="exportMaxWidthInput">Max export width (px)</label>
+            <input
+              id="exportMaxWidthInput"
+              type="number"
+              min="320"
+              max="6000"
+              step="10"
+              value="1920"
+            />
+          </div>
+
+          <div class="settings-field">
+            <label for="exportTargetKbInput">Target file size (KB)</label>
+            <input
+              id="exportTargetKbInput"
+              type="number"
+              min="40"
+              max="5000"
+              step="5"
+              value="150"
+            />
+          </div>
+
+          <div class="settings-field">
+            <label for="exportFormatSelect">File format</label>
+            <select id="exportFormatSelect">
+              <option value="webp">WebP (default)</option>
+              <option value="jpg">JPG</option>
+              <option value="png">PNG</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="exportPathInput">Export path (manual)</label>
+        <input
+          id="exportPathInput"
+          type="text"
+          placeholder="e.g. /Users/you/Sites/my-hugo-site/static/images"
+          autocomplete="off"
+        />
+        <div class="button-row">
+          <button id="selectExportDirBtn" type="button">Choose folder</button>
+          <button id="clearExportDirBtn" type="button">Clear folder</button>
+        </div>
+      </section>
+    </aside>
+
+    <div id="settingsBackdrop" class="settings-backdrop hidden"></div>
+    <div id="actionToast" class="action-toast" aria-live="polite"></div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
