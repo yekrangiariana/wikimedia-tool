@@ -1,27 +1,19 @@
 /* Touch-friendly sizing */
 @media (pointer: coarse) {
-  button,
-  input[type="text"],
-  input[type="number"],
-  textarea,
-  select {
-    min-height: 44px;
-  }
-
   .result-item {
     -webkit-tap-highlight-color: transparent;
   }
 
   .result-select {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
   }
 }
 
 /* Tablet */
 @media (max-width: 980px) {
   .topbar {
-    padding: 14px 16px;
+    padding: 12px 16px;
     align-items: flex-start;
   }
 
@@ -42,7 +34,7 @@
 
   .panel {
     min-height: auto;
-    padding: 16px;
+    padding: 12px;
   }
 
   .details-panel {
@@ -59,8 +51,8 @@
   .mobile-details-toggle {
     display: block;
     width: 100%;
-    min-height: 48px;
-    padding: 14px 16px;
+    min-height: 44px;
+    padding: 12px 16px;
     margin: 0;
     border-radius: 0;
     border-left: none;
@@ -69,13 +61,13 @@
     top: 0;
     z-index: 21;
     background: var(--surface);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
     text-transform: uppercase;
     letter-spacing: 0.8px;
   }
 
   .details-content {
-    padding: 16px;
+    padding: 12px;
   }
 
   .search-filters {
@@ -106,7 +98,7 @@
 
   .history-columns {
     grid-template-columns: 1fr;
-    padding: 0 16px;
+    padding: 0 12px;
     gap: 10px;
   }
 
@@ -123,6 +115,7 @@
 
   .history-gallery-header-bar .button-row {
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .history-gallery-workspace {
@@ -168,11 +161,33 @@
 /* Phone */
 @media (max-width: 600px) {
   :root {
-    --finder-grid-columns: 2;
+    --finder-grid-columns: 3;
+    --font-size-xs: 10px;
+    --font-size-sm: 11px;
+    --font-size-base: 13px;
+  }
+
+  body.mobile-panel-open {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
   }
 
   .topbar {
-    padding: 12px;
+    padding: 8px 10px;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    border-bottom: none;
+    border-top: var(--border);
+    background: var(--surface);
+    z-index: 50;
+  }
+
+  .topbar-title {
+    display: none;
   }
 
   .topbar-actions {
@@ -181,14 +196,73 @@
 
   .topbar-actions button {
     flex: 1;
+    padding: 10px 6px;
+    font-size: 10px;
+  }
+
+  .layout,
+  .history-page {
+    padding-bottom: 70px;
   }
 
   .panel {
-    padding: 12px;
+    padding: 10px;
+  }
+
+  /* Details panel as bottom sheet */
+  .details-panel {
+    position: fixed;
+    bottom: 56px;
+    left: 0;
+    right: 0;
+    top: auto;
+    max-height: 70vh;
+    background: var(--surface);
+    border-top: var(--border);
+    border-radius: 12px 12px 0 0;
+    z-index: 40;
+    transform: translateY(100%);
+    transition: transform 0.2s ease;
+  }
+
+  .details-panel.mobile-open {
+    transform: translateY(0);
+  }
+
+  .details-panel.mobile-collapsed {
+    transform: translateY(100%);
+  }
+
+  .mobile-details-toggle {
+    display: none;
+  }
+
+  body.gallery-mode-active .mobile-details-toggle {
+    display: block;
+    position: fixed;
+    bottom: 60px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    z-index: 30;
+    background: var(--success);
+    color: #fff;
+    border-color: var(--success);
   }
 
   .details-content {
-    padding: 12px;
+    padding: 10px;
+    max-height: calc(70vh - 10px);
+    overflow: auto;
+  }
+
+  #detailPreview,
+  #historyGalleryPreview {
+    max-height: 180px;
+  }
+
+  .search-panel {
+    order: 1;
   }
 
   .search-filters {
@@ -203,15 +277,272 @@
     width: 100%;
   }
 
-  .history-columns {
-    padding: 0 12px;
+  .result-item {
+    padding: 4px;
   }
 
+  .result-text h3 {
+    font-size: 9px;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+  }
+
+  .result-text p {
+    font-size: 8px;
+  }
+
+  /* Gallery mode: larger touch targets */
+  .result-head {
+    padding: 2px;
+  }
+
+  .generator h3 {
+    font-size: var(--font-size-xs);
+  }
+
+  .meta h2 {
+    font-size: var(--font-size-sm);
+  }
+
+  .meta p {
+    font-size: var(--font-size-xs);
+  }
+
+  .field-row {
+    margin-bottom: 8px;
+  }
+
+  .button-row {
+    gap: 6px;
+  }
+
+  button {
+    padding: 8px 10px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  textarea,
+  select {
+    padding: 8px 10px;
+  }
+
+  /* History/Vault */
+  .history-header {
+    padding: 10px;
+  }
+
+  .history-header h2 {
+    font-size: var(--font-size-sm);
+  }
+
+  .history-columns {
+    padding: 0 10px;
+    padding-bottom: 60px;
+  }
+
+  .history-list {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .history-item {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .history-item img {
+    aspect-ratio: 4 / 3;
+  }
+
+  .history-gallery-inspector {
+    margin: 0;
+    padding: 10px;
+  }
+
+  .history-gallery-header-bar {
+    padding: 8px;
+    gap: 6px;
+    grid-template-columns: 1fr;
+  }
+
+  .history-gallery-header-bar .button-row {
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .history-gallery-header-bar #historyGalleryCloseBtn {
+    order: 10;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .history-gallery-header-bar button {
+    padding: 6px 8px;
+    font-size: 9px;
+  }
+
+  .history-gallery-export-option {
+    font-size: 9px;
+    padding: 0 6px;
+    min-height: 28px;
+  }
+
+  .history-gallery-browser {
+    max-height: 35vh;
+    padding: 8px;
+  }
+
+  .history-gallery-thumb {
+    padding: 4px;
+    grid-template-columns: 40px 1fr auto;
+    gap: 4px;
+  }
+
+  /* Gallery items as multi-column cards */
+  .gallery-selection-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .gallery-item {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 4px;
+    text-align: center;
+  }
+
+  .gallery-item img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .gallery-item-title {
+    font-size: 8px;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .gallery-item button {
+    width: 100%;
+    padding: 4px;
+    font-size: 8px;
+  }
+
+  /* Vault gallery items as cards */
+  .history-gallery-items {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .history-gallery-thumb {
+    grid-template-columns: 1fr;
+    gap: 2px;
+    text-align: center;
+  }
+
+  .history-gallery-thumb img {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .history-gallery-thumb p {
+    font-size: 8px;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .history-gallery-thumb-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    background: var(--surface);
+  }
+
+  .history-gallery-thumb {
+    position: relative;
+  }
+
+  .history-gallery-details-panel {
+    padding: 10px;
+  }
+
+  /* Settings panel fullscreen */
   .settings-panel {
     right: 0;
     top: 0;
+    bottom: 56px;
     width: 100vw;
-    max-height: 100vh;
+    max-height: none;
+    height: calc(100vh - 56px);
     border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .settings-panel .settings-header {
+    order: 2;
+    border-bottom: none;
+    border-top: var(--border-light);
+    position: sticky;
+    bottom: 0;
+    background: var(--surface);
+  }
+
+  .settings-panel .settings-header h2 {
+    display: none;
+  }
+
+  .settings-panel .settings-header button {
+    flex: 1;
+  }
+
+  /* Bottom sheet handle */
+  .mobile-sheet-handle {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 6px;
+    cursor: pointer;
+  }
+
+  .handle-bar {
+    width: 36px;
+    height: 4px;
+    background: var(--text-muted);
+    border-radius: 2px;
+  }
+
+  .mobile-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    bottom: 56px;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 35;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .mobile-sheet-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .details-content {
+    max-height: calc(70vh - 30px);
+  }
+
+  .history-columns {
+    padding-bottom: 70px;
   }
 }

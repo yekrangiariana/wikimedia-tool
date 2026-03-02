@@ -80,3 +80,11 @@
 .mobile-details-toggle {
   display: none;
 }
+
+.mobile-sheet-handle {
+  display: none;
+}
+
+.mobile-sheet-backdrop {
+  display: none;
+}
