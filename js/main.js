@@ -828,7 +828,8 @@ function renderResults(items, options = {}) {
           return;
         }
 
-        const additive = Boolean(event.metaKey || event.ctrlKey) || isPhoneScreen();
+        const additive =
+          Boolean(event.metaKey || event.ctrlKey) || isPhoneScreen();
         toggleGallerySelection(item.pageId, {
           additive,
           forceChecked: null,
@@ -1217,7 +1218,11 @@ function applyGalleryModeUI() {
 }
 
 function toggleGallerySelection(pageId, options = {}) {
-  const { additive = false, forceChecked = null, skipPanelOpen = false } = options;
+  const {
+    additive = false,
+    forceChecked = null,
+    skipPanelOpen = false,
+  } = options;
   const selectedItem = currentResults.find((item) => item.pageId === pageId);
   if (!selectedItem) {
     return;
