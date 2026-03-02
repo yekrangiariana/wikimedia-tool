@@ -115,8 +115,6 @@ const exportPathInput = document.getElementById("exportPathInput");
 const selectExportDirBtn = document.getElementById("selectExportDirBtn");
 const clearExportDirBtn = document.getElementById("clearExportDirBtn");
 const actionToast = document.getElementById("actionToast");
-const mobileSheetHandle = document.getElementById("mobileSheetHandle");
-const mobileSheetBackdrop = document.getElementById("mobileSheetBackdrop");
 
 const emptyState = document.getElementById("emptyState");
 const detailsEl = document.getElementById("details");
@@ -182,14 +180,6 @@ detailsToggleBtn.addEventListener("click", () => {
   }
 
   setMobileDetailsCollapsed(!isMobileDetailsCollapsed);
-});
-
-mobileSheetHandle.addEventListener("click", () => {
-  closeMobilePanel();
-});
-
-mobileSheetBackdrop.addEventListener("click", () => {
-  closeMobilePanel();
 });
 
 window.addEventListener("resize", syncMobileDetailsState);
@@ -822,19 +812,13 @@ function renderResults(items, options = {}) {
           toggleGallerySelection(item.pageId, {
             additive: true,
             forceChecked: event.target.checked,
-            skipPanelOpen: isPhoneScreen(),
           });
           event.stopPropagation();
           return;
         }
 
-        const additive =
-          Boolean(event.metaKey || event.ctrlKey) || isPhoneScreen();
-        toggleGallerySelection(item.pageId, {
-          additive,
-          forceChecked: null,
-          skipPanelOpen: isPhoneScreen(),
-        });
+        const additive = Boolean(event.metaKey || event.ctrlKey);
+        toggleGallerySelection(item.pageId, { additive, forceChecked: null });
         return;
       }
 
@@ -1191,7 +1175,6 @@ function applyGridColumns() {
 
 function applyGalleryModeUI() {
   if (isGalleryMode()) {
-    document.body.classList.add("gallery-mode-active");
     selectedImage = null;
     galleryDetails.classList.remove("hidden");
     detailsEl.classList.add("hidden");
@@ -1201,7 +1184,6 @@ function applyGalleryModeUI() {
     return;
   }
 
-  document.body.classList.remove("gallery-mode-active");
   galleryDetails.classList.add("hidden");
   selectedGalleryItems.clear();
   currentGalleryHistoryId = null;
@@ -1218,11 +1200,7 @@ function applyGalleryModeUI() {
 }
 
 function toggleGallerySelection(pageId, options = {}) {
-  const {
-    additive = false,
-    forceChecked = null,
-    skipPanelOpen = false,
-  } = options;
+  const { additive = false, forceChecked = null } = options;
   const selectedItem = currentResults.find((item) => item.pageId === pageId);
   if (!selectedItem) {
     return;
@@ -1246,7 +1224,7 @@ function toggleGallerySelection(pageId, options = {}) {
   updateGallerySelectionList();
   renderResults(currentResults, { append: false });
 
-  if (isSmallScreen() && !skipPanelOpen) {
+  if (isSmallScreen()) {
     setMobileDetailsCollapsed(false);
   }
 
@@ -2899,60 +2877,22 @@ function isSmallScreen() {
   return window.matchMedia("(max-width: 980px)").matches;
 }
 
-function isPhoneScreen() {
-  return window.matchMedia("(max-width: 600px)").matches;
-}
-
 function setMobileDetailsCollapsed(collapsed) {
   isMobileDetailsCollapsed = collapsed;
-
-  if (isPhoneScreen()) {
-    detailsPanel.classList.toggle("mobile-open", !collapsed);
-    detailsPanel.classList.toggle("mobile-collapsed", collapsed);
-    document.body.classList.toggle("mobile-panel-open", !collapsed);
-    mobileSheetBackdrop.classList.toggle("visible", !collapsed);
-  } else {
-    detailsPanel.classList.toggle("mobile-collapsed", collapsed);
-    document.body.classList.remove("mobile-panel-open");
-    mobileSheetBackdrop.classList.remove("visible");
-  }
-
+  detailsPanel.classList.toggle("mobile-collapsed", collapsed);
   detailsToggleBtn.setAttribute("aria-expanded", String(!collapsed));
   detailsToggleBtn.textContent = collapsed
     ? "Show details panel"
     : "Hide details panel";
 }
 
-function closeMobilePanel() {
-  if (isPhoneScreen() || isSmallScreen()) {
-    setMobileDetailsCollapsed(true);
-  }
-}
-
 function syncMobileDetailsState() {
-  if (isPhoneScreen()) {
-    detailsPanel.classList.remove("mobile-collapsed");
-    if (!isMobileDetailsCollapsed && selectedImage) {
-      detailsPanel.classList.add("mobile-open");
-      document.body.classList.add("mobile-panel-open");
-      mobileSheetBackdrop.classList.add("visible");
-    } else {
-      detailsPanel.classList.remove("mobile-open");
-      document.body.classList.remove("mobile-panel-open");
-      mobileSheetBackdrop.classList.remove("visible");
-    }
-    return;
-  }
-
-  document.body.classList.remove("mobile-panel-open");
-  detailsPanel.classList.remove("mobile-open");
-  mobileSheetBackdrop.classList.remove("visible");
-
   if (isSmallScreen()) {
-    if (!isMobileDetailsCollapsed && selectedImage) {
+    if (isMobileDetailsCollapsed === false && selectedImage) {
       setMobileDetailsCollapsed(false);
       return;
     }
+
     setMobileDetailsCollapsed(true);
     return;
   }
