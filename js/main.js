@@ -1373,19 +1373,57 @@ function saveToHistory({
   layout,
   downloaded = false,
 }) {
-  const entry = {
-    id: crypto.randomUUID(),
-    title,
-    thumbnailUrl,
-    imageUrl,
-    fileName,
-    copiedText,
-    layout,
-    downloaded: Boolean(downloaded),
-    copiedAt: new Date().toISOString(),
-  };
+  const nowIso = new Date().toISOString();
+  const existingIndex = historyEntries.findIndex((item) => {
+    if (item?.type === "gallery") {
+      return false;
+    }
 
-  historyEntries = [entry, ...historyEntries];
+    if (imageUrl && item?.imageUrl === imageUrl) {
+      return true;
+    }
+
+    if (fileName && item?.fileName === fileName && title && item?.title === title) {
+      return true;
+    }
+
+    return false;
+  });
+
+  if (existingIndex >= 0) {
+    const existingEntry = historyEntries[existingIndex];
+    const mergedEntry = {
+      ...existingEntry,
+      title: title || existingEntry.title,
+      thumbnailUrl: thumbnailUrl || existingEntry.thumbnailUrl,
+      imageUrl: imageUrl || existingEntry.imageUrl,
+      fileName: fileName || existingEntry.fileName,
+      copiedText: copiedText || existingEntry.copiedText || "",
+      layout: layout || existingEntry.layout || "",
+      downloaded: Boolean(downloaded || existingEntry.downloaded),
+      copiedAt: nowIso,
+    };
+
+    historyEntries = [
+      mergedEntry,
+      ...historyEntries.filter((_, index) => index !== existingIndex),
+    ];
+  } else {
+    const entry = {
+      id: crypto.randomUUID(),
+      title,
+      thumbnailUrl,
+      imageUrl,
+      fileName,
+      copiedText,
+      layout,
+      downloaded: Boolean(downloaded),
+      copiedAt: nowIso,
+    };
+
+    historyEntries = [entry, ...historyEntries];
+  }
+
   persistHistory();
   renderHistory();
 }
@@ -1438,12 +1476,7 @@ function renderHistory() {
       if (entry.fileName) {
         infoParts.push(entry.fileName);
       }
-      if (entry.layout) {
-        infoParts.push(entry.layout);
-      }
-      if (entry.downloaded) {
-        infoParts.push("downloaded");
-      }
+      infoParts.push("previously viewed");
     }
     infoEl.textContent = infoParts.join(" • ");
 
@@ -1490,13 +1523,62 @@ function renderHistory() {
       const titleEl = document.createElement("h3");
       titleEl.textContent = entry.title || "Untitled";
 
+      const layoutField = document.createElement("div");
+      layoutField.className = "field-row";
+      const layoutLabel = document.createElement("label");
+      layoutLabel.textContent = "Layout";
+      const layoutInput = document.createElement("select");
+      layoutInput.innerHTML = `
+        <option value="normal">Normal image</option>
+        <option value="large">Large image</option>
+        <option value="xlarge">Extra large image</option>
+        <option value="custom">Custom width image</option>
+        <option value="cover">Cover</option>
+      `;
+      layoutInput.value = entry.layout || "normal";
+      layoutField.appendChild(layoutLabel);
+      layoutField.appendChild(layoutInput);
+
+      const widthField = document.createElement("div");
+      widthField.className = "field-row";
+      const widthLabel = document.createElement("label");
+      widthLabel.textContent = "Custom width (px)";
+      const widthInput = document.createElement("input");
+      widthInput.type = "number";
+      widthInput.min = "50";
+      widthInput.step = "10";
+      widthInput.value = "600";
+      widthField.appendChild(widthLabel);
+      widthField.appendChild(widthInput);
+
       const textEl = document.createElement("textarea");
       textEl.rows = 4;
       textEl.readOnly = true;
-      textEl.value = entry.copiedText || "";
+
+      const refreshSingleVaultShortcode = () => {
+        const nextLayout = layoutInput.value || "normal";
+        const generated = buildShortcodeForImage(entry, {
+          layout: nextLayout,
+          customWidth: widthInput.value,
+          caption: "",
+        });
+
+        widthField.classList.toggle("hidden", nextLayout !== "custom");
+        textEl.value = generated || "";
+        updateHistoryEntryFields(entry.id, {
+          layout: nextLayout,
+          copiedText: textEl.value,
+        });
+      };
+
+      layoutInput.addEventListener("change", refreshSingleVaultShortcode);
+      widthInput.addEventListener("input", refreshSingleVaultShortcode);
+      refreshSingleVaultShortcode();
 
       meta.appendChild(titleEl);
       meta.appendChild(infoEl);
+      meta.appendChild(layoutField);
+      meta.appendChild(widthField);
       meta.appendChild(textEl);
     }
 
@@ -1514,10 +1596,6 @@ function renderHistory() {
       copyBtn.type = "button";
       copyBtn.textContent = "Copy";
       copyBtn.dataset.copyHistoryId = entry.id;
-      if (!entry.copiedText) {
-        copyBtn.disabled = true;
-        copyBtn.title = "No copied text in this item";
-      }
 
       const redownloadBtn = document.createElement("button");
       redownloadBtn.type = "button";
@@ -1578,7 +1656,7 @@ function renderHistory() {
         return;
       }
 
-      await copyToClipboard(entry.copiedText, "History copied.");
+      await copyToClipboard(entry.copiedText, "Vault item copied.");
     });
   });
 

@@ -19,7 +19,7 @@
       </div>
       <div class="topbar-actions">
         <button id="showFinderViewBtn" type="button">Finder</button>
-        <button id="showHistoryViewBtn" type="button">History</button>
+        <button id="showHistoryViewBtn" type="button">Vault</button>
         <button id="openSettingsBtn" type="button">Settings</button>
       </div>
     </header>
@@ -143,7 +143,7 @@
               </div>
 
               <p class="settings-note">
-                Gallery is auto-saved to History in the background.
+                Gallery is auto-saved to Vault in the background.
               </p>
             </div>
           </article>
@@ -180,8 +180,6 @@
             </div>
 
             <div class="generator">
-              <h3>Hugo shortcode generator</h3>
-
               <div class="field-row">
                 <label for="layoutSelect">Layout</label>
                 <select id="layoutSelect">
@@ -237,9 +235,9 @@
 
     <main id="historyView" class="panel history-page hidden">
       <div class="history-header">
-        <h2>Copy History</h2>
+        <h2>Content Vault</h2>
         <p id="historyHeaderSubtitle">
-          Saved items from your copy action for quick reuse.
+          Saved assets and shortcodes for quick reuse.
         </p>
 
         <div
@@ -359,17 +357,17 @@
 
       <div id="historyList" class="history-columns">
         <section class="history-section">
-          <h3>Galleries</h3>
+          <h3>Gallery Collections</h3>
           <div id="historyGalleryList" class="history-list"></div>
         </section>
 
         <section class="history-section">
-          <h3>Single images</h3>
+          <h3>Single Assets</h3>
           <div id="historySingleList" class="history-list"></div>
         </section>
       </div>
       <p id="historyEmpty" class="empty-state">
-        No history yet. Copy a generated output to save it here.
+        Your vault is empty. Copy or download an item to save it here.
       </p>
     </main>
 

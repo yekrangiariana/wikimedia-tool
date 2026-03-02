@@ -61,7 +61,7 @@
 .panel {
   background: var(--surface);
   border-bottom: var(--border-light);
-  padding: 24px;
+  padding: 10px;
   min-height: calc(100vh - 130px);
 }
 

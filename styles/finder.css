@@ -202,13 +202,6 @@
   padding-top: 12px;
 }
 
-.generator h3 {
-  margin: 0 0 12px;
-  font-size: var(--font-size-sm);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
 .gallery-selection-list {
   display: grid;
   gap: 8px;
