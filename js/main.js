@@ -1383,7 +1383,12 @@ function saveToHistory({
       return true;
     }
 
-    if (fileName && item?.fileName === fileName && title && item?.title === title) {
+    if (
+      fileName &&
+      item?.fileName === fileName &&
+      title &&
+      item?.title === title
+    ) {
       return true;
     }
 
