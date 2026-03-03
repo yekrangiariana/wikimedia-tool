@@ -2874,7 +2874,7 @@ function updateDownloadButtonState() {
 }
 
 function isSmallScreen() {
-  return window.matchMedia("(max-width: 980px)").matches;
+  return window.matchMedia("(max-width: 680px)").matches;
 }
 
 function setMobileDetailsCollapsed(collapsed) {
