@@ -441,7 +441,13 @@ export function createImageEditorController({
     overlayContext.lineWidth = 1.5;
     overlayContext.strokeStyle = "rgba(255, 255, 255, 0.95)";
     overlayContext.beginPath();
-    overlayContext.arc(eraserCursorPoint.x, eraserCursorPoint.y, radius, 0, Math.PI * 2);
+    overlayContext.arc(
+      eraserCursorPoint.x,
+      eraserCursorPoint.y,
+      radius,
+      0,
+      Math.PI * 2,
+    );
     overlayContext.stroke();
 
     overlayContext.lineWidth = 1;
@@ -838,7 +844,11 @@ export function createImageEditorController({
 
     const point = clampPointToRenderBox(pointerToCanvasPoint(event));
     return {
-      x: clamp((point.x - renderBox.x) / renderBox.scale, 0, workingCanvas.width),
+      x: clamp(
+        (point.x - renderBox.x) / renderBox.scale,
+        0,
+        workingCanvas.width,
+      ),
       y: clamp(
         (point.y - renderBox.y) / renderBox.scale,
         0,
@@ -883,7 +893,12 @@ export function createImageEditorController({
   }
 
   function beginEraserStroke(event) {
-    if (!eraserMode || !workingCanvas || editTaskInProgress || cutoutInProgress) {
+    if (
+      !eraserMode ||
+      !workingCanvas ||
+      editTaskInProgress ||
+      cutoutInProgress
+    ) {
       return;
     }
 

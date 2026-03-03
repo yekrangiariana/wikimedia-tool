@@ -149,9 +149,7 @@ function normalizeEraseOperation(step) {
     ? clamp(Math.round(rawSize), 1, 300)
     : 20;
   const rawOpacity = Number(step?.opacity);
-  const opacity = Number.isFinite(rawOpacity)
-    ? clamp(rawOpacity, 0.05, 1)
-    : 1;
+  const opacity = Number.isFinite(rawOpacity) ? clamp(rawOpacity, 0.05, 1) : 1;
 
   const points = Array.isArray(step?.points)
     ? step.points
