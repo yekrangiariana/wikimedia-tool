@@ -57,6 +57,13 @@ const showFinderViewBtn = document.getElementById("showFinderViewBtn");
 const showHistoryViewBtn = document.getElementById("showHistoryViewBtn");
 const historyHeader = document.querySelector(".history-header");
 const historyList = document.getElementById("historyList");
+const historySectionToggle = document.getElementById("historySectionToggle");
+const historyShowSingleBtn = document.getElementById("historyShowSingleBtn");
+const historyShowGalleriesBtn = document.getElementById(
+  "historyShowGalleriesBtn",
+);
+const historyGallerySection = document.getElementById("historyGallerySection");
+const historySingleSection = document.getElementById("historySingleSection");
 const historyGalleryList = document.getElementById("historyGalleryList");
 const historySingleList = document.getElementById("historySingleList");
 const historyEmpty = document.getElementById("historyEmpty");
@@ -151,11 +158,28 @@ const editorBackBtn = document.getElementById("editorBackBtn");
 const editorCropToggleBtn = document.getElementById("editorCropToggleBtn");
 const editorRemoveBgBtn = document.getElementById("editorRemoveBgBtn");
 const editorBackgroundBtn = document.getElementById("editorBackgroundBtn");
+const editorColorAdjustBtn = document.getElementById("editorColorAdjustBtn");
 const editorEraserBtn = document.getElementById("editorEraserBtn");
 const editorApplyCropBtn = document.getElementById("editorApplyCropBtn");
 const editorApplyBackgroundBtn = document.getElementById(
   "editorApplyBackgroundBtn",
 );
+const editorApplyColorAdjustBtn = document.getElementById(
+  "editorApplyColorAdjustBtn",
+);
+const editorColorAdjustContent = document.getElementById(
+  "editorColorAdjustContent",
+);
+const editorBrightnessInput = document.getElementById("editorBrightnessInput");
+const editorBrightnessValue = document.getElementById("editorBrightnessValue");
+const editorWhiteBalanceInput = document.getElementById(
+  "editorWhiteBalanceInput",
+);
+const editorWhiteBalanceValue = document.getElementById(
+  "editorWhiteBalanceValue",
+);
+const editorSaturationInput = document.getElementById("editorSaturationInput");
+const editorSaturationValue = document.getElementById("editorSaturationValue");
 const editorEraserContent = document.getElementById("editorEraserContent");
 const editorEraserSizeInput = document.getElementById("editorEraserSizeInput");
 const editorEraserSizeValue = document.getElementById("editorEraserSizeValue");
@@ -184,6 +208,12 @@ const editorAspectRatioSelect = document.getElementById(
 );
 const editorBackgroundColorInput = document.getElementById(
   "editorBackgroundColorInput",
+);
+const editorBackgroundColorPreview = document.getElementById(
+  "editorBackgroundColorPreview",
+);
+const editorBackgroundSwatchButtons = Array.from(
+  document.querySelectorAll("[data-editor-color]"),
 );
 
 const emptyState = document.getElementById("emptyState");
@@ -247,6 +277,7 @@ let galleryDoneButtonTimer = null;
 let galleryDoneLinkEntryId = null;
 let activeHistoryGalleryId = null;
 let activeHistoryGalleryItemIndex = null;
+let historySectionMode = "single";
 let draggedHistoryGalleryIndex = null;
 const historyGalleryDrafts = new Map();
 let exportingHistoryGalleryImages = false;
@@ -267,6 +298,74 @@ let previewBuildQueueRunning = false;
 let progressNoticeDepth = 0;
 const previewBlobUrls = new Map();
 let imageEditsNeedsCompaction = false;
+
+function normalizeEditorHexColor(value) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const shortHexMatch = raw.match(/^#([0-9a-f]{3})$/i);
+  if (shortHexMatch) {
+    const digits = shortHexMatch[1].toLowerCase();
+    return `#${digits[0]}${digits[0]}${digits[1]}${digits[1]}${digits[2]}${digits[2]}`;
+  }
+
+  const longHexMatch = raw.match(/^#([0-9a-f]{6})$/i);
+  if (longHexMatch) {
+    return `#${longHexMatch[1].toLowerCase()}`;
+  }
+
+  return null;
+}
+
+function syncEditorBackgroundSwatches(color) {
+  editorBackgroundSwatchButtons.forEach((button) => {
+    const swatchColor = normalizeEditorHexColor(button.dataset.editorColor);
+    button.classList.toggle("active-color", swatchColor === color);
+  });
+}
+
+function applyEditorBackgroundColor(color) {
+  const normalized = normalizeEditorHexColor(color) || "#ffffff";
+
+  if (editorBackgroundColorInput) {
+    editorBackgroundColorInput.value = normalized;
+  }
+  if (editorBackgroundColorPreview) {
+    editorBackgroundColorPreview.style.background = normalized;
+  }
+
+  syncEditorBackgroundSwatches(normalized);
+}
+
+function initializeEditorBackgroundPicker() {
+  if (!editorBackgroundColorInput) {
+    return;
+  }
+
+  editorBackgroundColorInput.addEventListener("input", () => {
+    const normalized = normalizeEditorHexColor(editorBackgroundColorInput.value);
+    if (!normalized) {
+      return;
+    }
+    applyEditorBackgroundColor(normalized);
+  });
+
+  editorBackgroundColorInput.addEventListener("blur", () => {
+    applyEditorBackgroundColor(editorBackgroundColorInput.value);
+  });
+
+  editorBackgroundSwatchButtons.forEach((button) => {
+    const swatchColor = normalizeEditorHexColor(button.dataset.editorColor);
+    if (!swatchColor) {
+      return;
+    }
+
+    button.style.background = swatchColor;
+    button.addEventListener("click", () => {
+      applyEditorBackgroundColor(swatchColor);
+    });
+  });
+
+  applyEditorBackgroundColor(editorBackgroundColorInput.value);
+}
 
 function enqueuePreviewBuild(task) {
   return new Promise((resolve, reject) => {
@@ -319,9 +418,18 @@ const imageEditor = createImageEditorController({
   cropToggleBtn: editorCropToggleBtn,
   removeBgBtn: editorRemoveBgBtn,
   backgroundBtn: editorBackgroundBtn,
+  colorAdjustBtn: editorColorAdjustBtn,
   eraserBtn: editorEraserBtn,
   applyCropBtn: editorApplyCropBtn,
   applyBackgroundBtn: editorApplyBackgroundBtn,
+  applyColorAdjustBtn: editorApplyColorAdjustBtn,
+  colorAdjustContentEl: editorColorAdjustContent,
+  brightnessInput: editorBrightnessInput,
+  brightnessValueEl: editorBrightnessValue,
+  whiteBalanceInput: editorWhiteBalanceInput,
+  whiteBalanceValueEl: editorWhiteBalanceValue,
+  saturationInput: editorSaturationInput,
+  saturationValueEl: editorSaturationValue,
   eraserContentEl: editorEraserContent,
   eraserSizeInput: editorEraserSizeInput,
   eraserSizeValueEl: editorEraserSizeValue,
@@ -361,6 +469,12 @@ window.addEventListener("resize", syncMobileDetailsState);
 
 showFinderViewBtn.addEventListener("click", () => setActiveView("finder"));
 showHistoryViewBtn.addEventListener("click", () => setActiveView("history"));
+historyShowSingleBtn.addEventListener("click", () => {
+  setHistorySectionMode("single");
+});
+historyShowGalleriesBtn.addEventListener("click", () => {
+  setHistorySectionMode("gallery");
+});
 historyGalleryCloseBtn.addEventListener("click", closeHistoryGalleryInspector);
 historyGalleryExportAllBtn.addEventListener(
   "click",
@@ -2999,7 +3113,6 @@ function saveToHistory({
 function renderHistory() {
   historyGalleryList.innerHTML = "";
   historySingleList.innerHTML = "";
-  historyEmpty.classList.toggle("hidden", historyEntries.length > 0);
   historyList.classList.toggle("hidden", Boolean(activeHistoryGalleryId));
   historyHeader.classList.toggle(
     "history-header--gallery",
@@ -3011,6 +3124,9 @@ function renderHistory() {
     "hidden",
     !activeHistoryGalleryId,
   );
+  if (historySectionToggle) {
+    historySectionToggle.classList.toggle("hidden", Boolean(activeHistoryGalleryId));
+  }
   if (activeHistoryGalleryId) {
     historyEmpty.classList.add("hidden");
   }
@@ -3228,6 +3344,40 @@ function renderHistory() {
       historySingleList.appendChild(item);
     }
   });
+
+  const galleryCount = historyGalleryList.childElementCount;
+  const singleCount = historySingleList.childElementCount;
+  const hasAnyEntries = galleryCount + singleCount > 0;
+  const showsGallerySection = historySectionMode === "gallery";
+  const hasEntriesForActiveMode = showsGallerySection
+    ? galleryCount > 0
+    : singleCount > 0;
+
+  if (historyGallerySection) {
+    historyGallerySection.classList.toggle("hidden", !showsGallerySection);
+  }
+  if (historySingleSection) {
+    historySingleSection.classList.toggle("hidden", showsGallerySection);
+  }
+
+  historyList.classList.toggle(
+    "hidden",
+    Boolean(activeHistoryGalleryId) || !hasEntriesForActiveMode,
+  );
+  historyEmpty.classList.toggle(
+    "hidden",
+    Boolean(activeHistoryGalleryId) || hasEntriesForActiveMode,
+  );
+
+  if (!hasAnyEntries) {
+    historyEmpty.textContent = "Your vault is empty. Copy or download an item to save it here.";
+  } else if (showsGallerySection) {
+    historyEmpty.textContent = "No galleries yet. Save a gallery from Finder to see it here.";
+  } else {
+    historyEmpty.textContent = "No previously used items yet. Copy or download an item to save it here.";
+  }
+
+  updateHistorySectionToggleUi();
 
   historyList.querySelectorAll("[data-edit-history-id]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3516,10 +3666,14 @@ function openHistoryGalleryInspector(entryId, { syncHash = true } = {}) {
     return false;
   }
 
+  historySectionMode = "gallery";
   activeHistoryGalleryId = entry.id;
   activeViewName = "history";
   historyList.classList.add("hidden");
   historyEmpty.classList.add("hidden");
+  if (historySectionToggle) {
+    historySectionToggle.classList.add("hidden");
+  }
   historyHeader.classList.add("history-header--gallery");
   historyGalleryHeaderBar.classList.remove("hidden");
   historyHeaderTitleEditBtn.classList.remove("hidden");
@@ -3542,13 +3696,7 @@ function closeHistoryGalleryInspector({ syncHash = true } = {}) {
   activeHistoryGalleryItemIndex = null;
   draggedHistoryGalleryIndex = null;
   historyGalleryInspector.classList.add("hidden");
-  historyList.classList.remove("hidden");
-  historyEmpty.classList.toggle("hidden", historyEntries.length > 0);
-  historyHeader.classList.remove("history-header--gallery");
   resetHistoryHeaderDefaultText();
-  historyHeaderTitleEditBtn.classList.add("hidden");
-  historyHeaderSubtitleEditBtn.classList.add("hidden");
-  historyGalleryHeaderBar.classList.add("hidden");
   historyGalleryItems.innerHTML = "";
   historyGalleryMeta.textContent = "";
   historyGalleryDetails.classList.add("hidden");
@@ -3563,10 +3711,37 @@ function closeHistoryGalleryInspector({ syncHash = true } = {}) {
   clearHistoryHeaderEditableState(historyHeaderTitle);
   clearHistoryHeaderEditableState(historyHeaderSubtitle);
   setHistoryGalleryExportingState(false);
+  renderHistory();
 
   if (syncHash) {
     syncHashWithUi();
   }
+}
+
+function setHistorySectionMode(mode) {
+  const nextMode = mode === "gallery" ? "gallery" : "single";
+  if (historySectionMode === nextMode) {
+    updateHistorySectionToggleUi();
+    return;
+  }
+
+  historySectionMode = nextMode;
+  renderHistory();
+}
+
+function updateHistorySectionToggleUi() {
+  const showsGallerySection = historySectionMode === "gallery";
+
+  historyShowGalleriesBtn.classList.toggle("active-tab", showsGallerySection);
+  historyShowSingleBtn.classList.toggle("active-tab", !showsGallerySection);
+  historyShowGalleriesBtn.setAttribute(
+    "aria-pressed",
+    String(showsGallerySection),
+  );
+  historyShowSingleBtn.setAttribute(
+    "aria-pressed",
+    String(!showsGallerySection),
+  );
 }
 
 function renderHistoryGalleryInspector(entry) {
@@ -5605,6 +5780,7 @@ async function copyToClipboard(value, successMessage) {
 updateWidthVisibility();
 updateDownloadButtonState();
 syncMobileDetailsState();
+initializeEditorBackgroundPicker();
 settings = loadSettings();
 persistedImageEdits = loadImageEdits();
 if (imageEditsNeedsCompaction) {

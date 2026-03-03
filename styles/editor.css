@@ -247,6 +247,23 @@
   gap: 10px;
   margin-bottom: 10px;
 }
+#editorColorAdjustContent {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#editorColorAdjustContent.hidden {
+  display: none;
+}
+
+#editorColorAdjustContent input[type="range"] {
+  width: 100%;
+}
+
+#editorColorAdjustContent .settings-note {
+  margin-top: 6px;
+}
 
 #editorEraserContent.hidden {
   display: none;
@@ -274,6 +291,61 @@
 
 #editorBackgroundColorInput {
   width: 100%;
+}
+
+.editor-color-picker {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.editor-color-preview {
+  width: 42px;
+  height: 42px;
+  border: var(--border-light);
+  background: #ffffff;
+}
+
+.editor-color-sliders {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.editor-color-slider {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+}
+
+.editor-color-slider > span {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+}
+
+.editor-color-slider input[type="range"] {
+  width: 100%;
+}
+
+.editor-color-swatches {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.editor-color-swatches button {
+  min-height: 28px;
+  padding: 0;
+  border: var(--border-light);
+  border-radius: 4px;
+}
+
+.editor-color-swatches button.active-color {
+  border: var(--border);
 }
 
 #editorCropContent .button-row {
@@ -328,5 +400,10 @@ body.editor-active #editorView {
 
   .editor-panel {
     border-left: none;
+  }
+
+  .editor-color-slider {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 }

@@ -145,9 +145,18 @@ export function createImageEditorController({
   cropToggleBtn,
   removeBgBtn,
   backgroundBtn,
+  colorAdjustBtn,
   eraserBtn,
   applyCropBtn,
   applyBackgroundBtn,
+  applyColorAdjustBtn,
+  colorAdjustContentEl,
+  brightnessInput,
+  brightnessValueEl,
+  whiteBalanceInput,
+  whiteBalanceValueEl,
+  saturationInput,
+  saturationValueEl,
   eraserContentEl,
   eraserSizeInput,
   eraserSizeValueEl,
@@ -180,6 +189,7 @@ export function createImageEditorController({
   let isOpen = false;
   let cropMode = false;
   let backgroundMode = false;
+  let colorAdjustMode = false;
   let eraserMode = false;
   let renderBox = null;
   let currentSelection = null;
@@ -206,6 +216,9 @@ export function createImageEditorController({
   let eraserStrokePoints = [];
   let eraserStrokePointerId = null;
   let eraserCursorPoint = null;
+  let colorAdjustPreviewRafId = null;
+  let colorAdjustPreviewVersion = 0;
+  let colorAdjustEmitTimer = null;
   const selectionMinSize = 24;
   const handleRadius = 8;
   const handleSize = 10;
@@ -394,6 +407,10 @@ export function createImageEditorController({
       backgroundBtn.classList.toggle("active-tab", backgroundMode);
       backgroundBtn.disabled = isBusy;
     }
+    if (colorAdjustBtn) {
+      colorAdjustBtn.classList.toggle("active-tab", colorAdjustMode);
+      colorAdjustBtn.disabled = isBusy;
+    }
     if (eraserBtn) {
       eraserBtn.classList.toggle("active-tab", eraserMode);
       eraserBtn.disabled = isBusy;
@@ -401,6 +418,9 @@ export function createImageEditorController({
     applyCropBtn.disabled = !hasSelection || isBusy;
     if (applyBackgroundBtn) {
       applyBackgroundBtn.disabled = !workingCanvas || isBusy;
+    }
+    if (applyColorAdjustBtn) {
+      applyColorAdjustBtn.disabled = !workingCanvas || isBusy;
     }
     if (undoBtn) {
       undoBtn.disabled = operationHistory.length === 0 || isBusy;
@@ -432,10 +452,14 @@ export function createImageEditorController({
       eraserContentEl.classList.toggle("hidden", !eraserMode);
     }
 
+    if (colorAdjustContentEl) {
+      colorAdjustContentEl.classList.toggle("hidden", !colorAdjustMode);
+    }
+
     if (cropHintEl) {
       cropHintEl.classList.toggle(
         "hidden",
-        cropMode || backgroundMode || eraserMode,
+        cropMode || backgroundMode || colorAdjustMode || eraserMode,
       );
     }
 
@@ -489,6 +513,169 @@ export function createImageEditorController({
     }
 
     eraserOpacityValueEl.textContent = `${Math.round(getEraserOpacity() * 100)}%`;
+  }
+
+  function getColorAdjustValue(inputEl) {
+    const raw = Number.parseInt(inputEl?.value || "0", 10);
+    return clamp(Number.isFinite(raw) ? raw : 0, -100, 100);
+  }
+
+  function handleRangeArrowNudge(event, inputEl, onValueChanged) {
+    if (!(inputEl instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const key = event.key;
+    const isIncreaseKey = key === "ArrowRight" || key === "ArrowUp";
+    const isDecreaseKey = key === "ArrowLeft" || key === "ArrowDown";
+    if (!isIncreaseKey && !isDecreaseKey) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const min = Number.parseFloat(inputEl.min || "-100");
+    const max = Number.parseFloat(inputEl.max || "100");
+    const step = Number.parseFloat(inputEl.step || "1") || 1;
+    const multiplier = event.shiftKey ? 10 : 1;
+    const delta = step * multiplier * (isIncreaseKey ? 1 : -1);
+    const current = Number.parseFloat(inputEl.value || "0");
+    const next = clamp(
+      Number.isFinite(current) ? current + delta : delta,
+      Number.isFinite(min) ? min : -100,
+      Number.isFinite(max) ? max : 100,
+    );
+
+    inputEl.value = String(Math.round(next));
+    if (typeof onValueChanged === "function") {
+      onValueChanged();
+    }
+  }
+
+  function updateColorAdjustLabels() {
+    if (brightnessValueEl) {
+      brightnessValueEl.textContent = `${getColorAdjustValue(brightnessInput)}%`;
+    }
+    if (whiteBalanceValueEl) {
+      whiteBalanceValueEl.textContent = `${getColorAdjustValue(whiteBalanceInput)}%`;
+    }
+    if (saturationValueEl) {
+      saturationValueEl.textContent = `${getColorAdjustValue(saturationInput)}%`;
+    }
+  }
+
+  function setColorAdjustInputs(operation) {
+    const brightness = clamp(Number(operation?.brightness) || 0, -100, 100);
+    const whiteBalance = clamp(
+      Number(operation?.whiteBalance) || 0,
+      -100,
+      100,
+    );
+    const saturation = clamp(Number(operation?.saturation) || 0, -100, 100);
+
+    if (brightnessInput) {
+      brightnessInput.value = String(brightness);
+    }
+    if (whiteBalanceInput) {
+      whiteBalanceInput.value = String(whiteBalance);
+    }
+    if (saturationInput) {
+      saturationInput.value = String(saturation);
+    }
+    updateColorAdjustLabels();
+  }
+
+  function getColorAdjustOperation() {
+    return {
+      type: "colorAdjust",
+      brightness: getColorAdjustValue(brightnessInput),
+      whiteBalance: getColorAdjustValue(whiteBalanceInput),
+      saturation: getColorAdjustValue(saturationInput),
+    };
+  }
+
+  function setColorAdjustOperation(nextOperation) {
+    const normalizedOperation = {
+      type: "colorAdjust",
+      brightness: clamp(Number(nextOperation?.brightness) || 0, -100, 100),
+      whiteBalance: clamp(Number(nextOperation?.whiteBalance) || 0, -100, 100),
+      saturation: clamp(Number(nextOperation?.saturation) || 0, -100, 100),
+    };
+
+    const withoutColorAdjust = operationHistory.filter(
+      (step) => step?.type !== "colorAdjust",
+    );
+
+    const isNeutralAdjust =
+      normalizedOperation.brightness === 0 &&
+      normalizedOperation.whiteBalance === 0 &&
+      normalizedOperation.saturation === 0;
+
+    operationHistory = isNeutralAdjust
+      ? withoutColorAdjust
+      : [...withoutColorAdjust, normalizedOperation];
+  }
+
+  function scheduleColorAdjustEmit() {
+    if (colorAdjustEmitTimer) {
+      window.clearTimeout(colorAdjustEmitTimer);
+    }
+
+    colorAdjustEmitTimer = window.setTimeout(() => {
+      colorAdjustEmitTimer = null;
+      hasEdits = operationHistory.length > 0;
+      void emitEditorChange();
+    }, 150);
+  }
+
+  async function applyColorAdjustLivePreview() {
+    if (!workingCanvas || editTaskInProgress || cutoutInProgress) {
+      return;
+    }
+
+    const nextOperation = getColorAdjustOperation();
+    const previousOperation =
+      [...operationHistory]
+        .reverse()
+        .find((step) => step?.type === "colorAdjust") || null;
+    const previousSignature = previousOperation
+      ? `${previousOperation.brightness}:${previousOperation.whiteBalance}:${previousOperation.saturation}`
+      : "none";
+    const nextSignature = `${nextOperation.brightness}:${nextOperation.whiteBalance}:${nextOperation.saturation}`;
+
+    if (previousSignature === nextSignature) {
+      return;
+    }
+
+    setColorAdjustOperation(nextOperation);
+    redoHistory = [];
+    clearBackgroundSourceCache();
+
+    const previewVersion = ++colorAdjustPreviewVersion;
+    const rebuilt = await rebuildWorkingFromHistory();
+    if (!rebuilt || previewVersion !== colorAdjustPreviewVersion) {
+      return;
+    }
+
+    hasEdits = operationHistory.length > 0;
+    render();
+    updateToolbarState();
+    scheduleColorAdjustEmit();
+  }
+
+  function scheduleColorAdjustPreview() {
+    if (!colorAdjustMode || !workingCanvas) {
+      return;
+    }
+
+    if (colorAdjustPreviewRafId) {
+      window.cancelAnimationFrame(colorAdjustPreviewRafId);
+    }
+
+    colorAdjustPreviewRafId = window.requestAnimationFrame(() => {
+      colorAdjustPreviewRafId = null;
+      void applyColorAdjustLivePreview();
+    });
   }
 
   function initializeSessionSnapshots() {
@@ -1697,6 +1884,31 @@ export function createImageEditorController({
     }
   }
 
+  async function applyColorAdjust() {
+    if (!workingCanvas || editTaskInProgress || cutoutInProgress) {
+      return;
+    }
+
+    editTaskInProgress = true;
+    updateToolbarState();
+    const startedAt = performance.now();
+    try {
+      setColorAdjustOperation(getColorAdjustOperation());
+      redoHistory = [];
+      clearBackgroundSourceCache();
+      await rebuildWorkingFromHistory();
+      hasEdits = operationHistory.length > 0;
+      syncSessionSnapshotAfterEdit();
+      clearSelection({ renderNow: false });
+      notifyTimed("Colour adjustments applied", startedAt);
+      await emitEditorChange();
+      render();
+    } finally {
+      editTaskInProgress = false;
+      updateToolbarState();
+    }
+  }
+
   async function undoLastEdit() {
     if (!operationHistory.length || editTaskInProgress || cutoutInProgress) {
       return;
@@ -1876,6 +2088,7 @@ export function createImageEditorController({
     hasEdits = operationHistory.length > 0 || sourceUrl !== meta.imageUrl;
     cropMode = false;
     backgroundMode = false;
+    colorAdjustMode = false;
     eraserMode = false;
     eraserStrokeActive = false;
     eraserStrokePoints = [];
@@ -1893,6 +2106,11 @@ export function createImageEditorController({
     if (operationHistory.length > 0 && sourceUrl === meta.imageUrl) {
       await rebuildWorkingFromHistory();
     }
+    const existingColorAdjust =
+      [...operationHistory]
+        .reverse()
+        .find((step) => step?.type === "colorAdjust") || null;
+    setColorAdjustInputs(existingColorAdjust);
     initializeSessionSnapshots();
     clearSelection();
     sizeStageCanvases();
@@ -1904,11 +2122,20 @@ export function createImageEditorController({
     isOpen = false;
     cropMode = false;
     backgroundMode = false;
+    colorAdjustMode = false;
     eraserMode = false;
     eraserStrokeActive = false;
     eraserStrokePoints = [];
     eraserStrokePointerId = null;
     eraserCursorPoint = null;
+    if (colorAdjustPreviewRafId) {
+      window.cancelAnimationFrame(colorAdjustPreviewRafId);
+      colorAdjustPreviewRafId = null;
+    }
+    if (colorAdjustEmitTimer) {
+      window.clearTimeout(colorAdjustEmitTimer);
+      colorAdjustEmitTimer = null;
+    }
     hasEdits = false;
     operationHistory = [];
     redoHistory = [];
@@ -1927,6 +2154,7 @@ export function createImageEditorController({
   function toggleCropMode() {
     if (!cropMode) {
       backgroundMode = false;
+      colorAdjustMode = false;
       eraserMode = false;
       eraserCursorPoint = null;
     }
@@ -1956,11 +2184,32 @@ export function createImageEditorController({
     backgroundMode = !backgroundMode;
     if (backgroundMode) {
       cropMode = false;
+      colorAdjustMode = false;
       eraserMode = false;
       eraserCursorPoint = null;
       clearSelection();
       clearFixedAspectOverlay();
       notify("Background tool enabled. Pick a colour and apply.");
+    }
+
+    render();
+    updateToolbarState();
+  }
+
+  function toggleColorAdjustMode() {
+    if (!colorAdjustBtn) {
+      return;
+    }
+
+    colorAdjustMode = !colorAdjustMode;
+    if (colorAdjustMode) {
+      cropMode = false;
+      backgroundMode = false;
+      eraserMode = false;
+      eraserCursorPoint = null;
+      clearSelection();
+      clearFixedAspectOverlay();
+      notify("Colours tool enabled. Set values and apply.");
     }
 
     render();
@@ -1976,6 +2225,7 @@ export function createImageEditorController({
     if (eraserMode) {
       cropMode = false;
       backgroundMode = false;
+      colorAdjustMode = false;
       clearSelection();
       clearFixedAspectOverlay();
       notify("Eraser enabled. Drag on the image to remove areas.");
@@ -2030,12 +2280,16 @@ export function createImageEditorController({
     void removeBackgroundClientSide();
   });
   backgroundBtn?.addEventListener("click", toggleBackgroundMode);
+  colorAdjustBtn?.addEventListener("click", toggleColorAdjustMode);
   eraserBtn?.addEventListener("click", toggleEraserMode);
   applyCropBtn.addEventListener("click", () => {
     void applyCrop();
   });
   applyBackgroundBtn?.addEventListener("click", () => {
     void applyBackground();
+  });
+  applyColorAdjustBtn?.addEventListener("click", () => {
+    void applyColorAdjust();
   });
   undoBtn?.addEventListener("click", () => {
     void undoLastEdit();
@@ -2056,12 +2310,43 @@ export function createImageEditorController({
     updateEraserOpacityLabel();
     render();
   });
+  brightnessInput?.addEventListener("input", () => {
+    updateColorAdjustLabels();
+    scheduleColorAdjustPreview();
+  });
+  brightnessInput?.addEventListener("keydown", (event) => {
+    handleRangeArrowNudge(event, brightnessInput, () => {
+      updateColorAdjustLabels();
+      scheduleColorAdjustPreview();
+    });
+  });
+  whiteBalanceInput?.addEventListener("input", () => {
+    updateColorAdjustLabels();
+    scheduleColorAdjustPreview();
+  });
+  whiteBalanceInput?.addEventListener("keydown", (event) => {
+    handleRangeArrowNudge(event, whiteBalanceInput, () => {
+      updateColorAdjustLabels();
+      scheduleColorAdjustPreview();
+    });
+  });
+  saturationInput?.addEventListener("input", () => {
+    updateColorAdjustLabels();
+    scheduleColorAdjustPreview();
+  });
+  saturationInput?.addEventListener("keydown", (event) => {
+    handleRangeArrowNudge(event, saturationInput, () => {
+      updateColorAdjustLabels();
+      scheduleColorAdjustPreview();
+    });
+  });
 
   window.addEventListener("resize", handleResize);
 
   sizeStageCanvases();
   updateEraserSizeLabel();
   updateEraserOpacityLabel();
+  setColorAdjustInputs(null);
   render();
 
   rootEl.classList.add("hidden");

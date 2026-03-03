@@ -168,6 +168,72 @@ function normalizeEraseOperation(step) {
   };
 }
 
+function normalizeColorAdjustOperation(step) {
+  const rawBrightness = Number(step?.brightness);
+  const rawWhiteBalance = Number(step?.whiteBalance);
+  const rawSaturation = Number(step?.saturation);
+
+  return {
+    type: "colorAdjust",
+    brightness: Number.isFinite(rawBrightness)
+      ? clamp(rawBrightness, -100, 100)
+      : 0,
+    whiteBalance: Number.isFinite(rawWhiteBalance)
+      ? clamp(rawWhiteBalance, -100, 100)
+      : 0,
+    saturation: Number.isFinite(rawSaturation)
+      ? clamp(rawSaturation, -100, 100)
+      : 0,
+  };
+}
+
+function applyColorAdjustOperation(sourceCanvas, operation) {
+  const nextCanvas = cloneCanvas(sourceCanvas);
+  const nextContext = nextCanvas.getContext("2d");
+  if (!nextContext) {
+    throw new Error("Canvas context unavailable");
+  }
+
+  const width = nextCanvas.width;
+  const height = nextCanvas.height;
+  const imageData = nextContext.getImageData(0, 0, width, height);
+  const pixels = imageData.data;
+
+  const brightness = clamp(Number(operation?.brightness) || 0, -100, 100);
+  const whiteBalance = clamp(Number(operation?.whiteBalance) || 0, -100, 100);
+  const saturation = clamp(Number(operation?.saturation) || 0, -100, 100);
+
+  const brightnessShift = (brightness / 100) * 255;
+  const saturationFactor = 1 + saturation / 100;
+  const whiteBalanceShift = (whiteBalance / 100) * 64;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    let red = pixels[index];
+    let green = pixels[index + 1];
+    let blue = pixels[index + 2];
+
+    const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+    red = luminance + (red - luminance) * saturationFactor;
+    green = luminance + (green - luminance) * saturationFactor;
+    blue = luminance + (blue - luminance) * saturationFactor;
+
+    red += brightnessShift;
+    green += brightnessShift;
+    blue += brightnessShift;
+
+    red += whiteBalanceShift;
+    green += whiteBalanceShift * 0.12;
+    blue -= whiteBalanceShift;
+
+    pixels[index] = clamp(Math.round(red), 0, 255);
+    pixels[index + 1] = clamp(Math.round(green), 0, 255);
+    pixels[index + 2] = clamp(Math.round(blue), 0, 255);
+  }
+
+  nextContext.putImageData(imageData, 0, 0);
+  return nextCanvas;
+}
+
 function applyEraseOperation(sourceCanvas, operation) {
   const nextCanvas = cloneCanvas(sourceCanvas);
   const nextContext = nextCanvas.getContext("2d");
@@ -215,6 +281,7 @@ function applyEraseOperation(sourceCanvas, operation) {
  * This is the canonical operation schema used by the whole app:
  * - { type: "cutout" }
  * - { type: "background", color }
+ * - { type: "colorAdjust", brightness, whiteBalance, saturation }
  * - { type: "crop", x, y, width, height }
  *
  * Any future editor feature should add a new operation type here first,
@@ -239,6 +306,10 @@ export function normalizeEditOperations(input) {
         return normalizeEraseOperation(step);
       }
 
+      if (step?.type === "colorAdjust") {
+        return normalizeColorAdjustOperation(step);
+      }
+
       if (step?.type === "crop") {
         return normalizeCropOperation(step);
       }
@@ -260,6 +331,7 @@ export function normalizeEditOperations(input) {
         step &&
         (step.type === "cutout" ||
           step.type === "background" ||
+          step.type === "colorAdjust" ||
           (step.type === "erase" && Array.isArray(step.points)) ||
           (Number.isFinite(step.x) &&
             Number.isFinite(step.y) &&
@@ -294,6 +366,11 @@ export async function applyEditOperationsToCanvas(baseCanvas, operations) {
 
     if (operation.type === "erase") {
       workingCanvas = applyEraseOperation(workingCanvas, operation);
+      continue;
+    }
+
+    if (operation.type === "colorAdjust") {
+      workingCanvas = applyColorAdjustOperation(workingCanvas, operation);
       continue;
     }
 

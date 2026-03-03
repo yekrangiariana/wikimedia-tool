@@ -458,13 +458,32 @@
         </div>
       </section>
 
+      <div id="historySectionToggle" class="history-section-toggle">
+        <button
+          id="historyShowSingleBtn"
+          type="button"
+          aria-pressed="true"
+        >
+          <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+          <span>Previously used</span>
+        </button>
+        <button
+          id="historyShowGalleriesBtn"
+          type="button"
+          aria-pressed="false"
+        >
+          <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+          <span>Galleries</span>
+        </button>
+      </div>
+
       <div id="historyList" class="history-columns">
-        <section class="history-section">
+        <section id="historyGallerySection" class="history-section hidden">
           <h3>Gallery Collections</h3>
           <div id="historyGalleryList" class="history-list"></div>
         </section>
 
-        <section class="history-section">
+        <section id="historySingleSection" class="history-section">
           <h3>Previously used</h3>
           <div id="historySingleList" class="history-list"></div>
         </section>
@@ -493,6 +512,10 @@
             <button id="editorBackgroundBtn" type="button">
               <i class="fa-solid fa-fill-drip" aria-hidden="true"></i>
               <span>Background</span>
+            </button>
+            <button id="editorColorAdjustBtn" type="button">
+              <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+              <span>Colours</span>
             </button>
             <button id="editorEraserBtn" type="button">
               <i class="fa-solid fa-eraser" aria-hidden="true"></i>
@@ -560,11 +583,32 @@
               <h2>Background</h2>
               <div class="field-row">
                 <label for="editorBackgroundColorInput">Solid colour</label>
-                <input
-                  id="editorBackgroundColorInput"
-                  type="color"
-                  value="#ffffff"
-                />
+                <div class="editor-color-picker">
+                  <div
+                    id="editorBackgroundColorPreview"
+                    class="editor-color-preview"
+                    aria-hidden="true"
+                  ></div>
+                  <input
+                    id="editorBackgroundColorInput"
+                    type="text"
+                    value="#ffffff"
+                    maxlength="7"
+                    spellcheck="false"
+                    autocomplete="off"
+                    inputmode="text"
+                    aria-label="Background colour hex value"
+                  />
+                </div>
+
+                <div class="editor-color-swatches" aria-label="Colour presets">
+                  <button type="button" data-editor-color="#ffffff" aria-label="White"></button>
+                  <button type="button" data-editor-color="#f5f0e6" aria-label="Warm cream"></button>
+                  <button type="button" data-editor-color="#e8f3ff" aria-label="Light sky"></button>
+                  <button type="button" data-editor-color="#e8f7ec" aria-label="Mint"></button>
+                  <button type="button" data-editor-color="#ffe8ef" aria-label="Rose"></button>
+                  <button type="button" data-editor-color="#111111" aria-label="Near black"></button>
+                </div>
               </div>
               <div class="button-row">
                 <button id="editorApplyBackgroundBtn" type="button">
@@ -574,6 +618,54 @@
               </div>
               <p class="settings-note">
                 Adds a solid colour behind the current image.
+              </p>
+            </div>
+            <div id="editorColorAdjustContent" class="hidden">
+              <h2>Colours</h2>
+              <div class="field-row">
+                <label for="editorBrightnessInput">Brightness</label>
+                <input
+                  id="editorBrightnessInput"
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value="0"
+                />
+                <p id="editorBrightnessValue" class="settings-note">0%</p>
+              </div>
+              <div class="field-row">
+                <label for="editorWhiteBalanceInput">White balance</label>
+                <input
+                  id="editorWhiteBalanceInput"
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value="0"
+                />
+                <p id="editorWhiteBalanceValue" class="settings-note">0%</p>
+              </div>
+              <div class="field-row">
+                <label for="editorSaturationInput">Saturation</label>
+                <input
+                  id="editorSaturationInput"
+                  type="range"
+                  min="-100"
+                  max="100"
+                  step="1"
+                  value="0"
+                />
+                <p id="editorSaturationValue" class="settings-note">0%</p>
+              </div>
+              <div class="button-row">
+                <button id="editorApplyColorAdjustBtn" type="button">
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
+                  <span>Apply colours</span>
+                </button>
+              </div>
+              <p class="settings-note">
+                Adjust tone and colour balance for the current image.
               </p>
             </div>
             <div id="editorEraserContent" class="hidden">
