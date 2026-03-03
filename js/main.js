@@ -79,6 +79,9 @@ const historyGalleryExportAllBtn = document.getElementById(
 const historyGalleryCopyAllCaptionsBtn = document.getElementById(
   "historyGalleryCopyAllCaptionsBtn",
 );
+const historyGalleryAddMoreBtn = document.getElementById(
+  "historyGalleryAddMoreBtn",
+);
 const historyGalleryCloseBtn = document.getElementById(
   "historyGalleryCloseBtn",
 );
@@ -185,6 +188,7 @@ let galleryDoneButtonTimer = null;
 let galleryDoneLinkEntryId = null;
 let activeHistoryGalleryId = null;
 let activeHistoryGalleryItemIndex = null;
+let draggedHistoryGalleryIndex = null;
 let isHistoryHeaderEditing = false;
 let historyHeaderOriginalTitle = "";
 let historyHeaderOriginalDescription = "";
@@ -193,6 +197,8 @@ let exportingHistoryGalleryImages = false;
 const ROUTE_FINDER = "finder";
 const ROUTE_VAULT = "vault";
 let isApplyingHashRoute = false;
+const MOBILE_DRAG_LONG_PRESS_MS = 220;
+const MOBILE_DRAG_CANCEL_MOVE_PX = 10;
 
 detailsToggleBtn.addEventListener("click", () => {
   if (!isSmallScreen()) {
@@ -232,9 +238,12 @@ historyGalleryCopyAllCaptionsBtn.addEventListener(
   "click",
   copyAllHistoryGalleryCaptions,
 );
+historyGalleryAddMoreBtn.addEventListener(
+  "click",
+  addMoreImagesToHistoryGallery,
+);
 historyGalleryPrefixExportCheckbox.addEventListener("change", () => {
   refreshActiveHistoryGalleryShortcode();
-  updateHistoryGalleryExportAllButtonLabel();
 });
 historyGalleryCaptionInput.addEventListener(
   "input",
@@ -256,6 +265,7 @@ historyGalleryCopyBtn.addEventListener(
   "click",
   copyActiveHistoryGalleryShortcode,
 );
+document.addEventListener("keydown", handleHistoryGalleryReorderHotkeys);
 
 openSettingsBtn.addEventListener("click", openSettingsPanel);
 closeSettingsBtn.addEventListener("click", closeSettingsPanel);
@@ -1181,18 +1191,15 @@ function updateHistoryGalleryExportAllButtonLabel() {
     setButtonIconLabel(
       historyGalleryExportAllBtn,
       "fa-solid fa-spinner",
-      "Exporting...",
+      "Downloading...",
     );
     return;
   }
 
-  const folderModeText = historyGalleryPrefixExportCheckbox.checked
-    ? "Path ON"
-    : "Path OFF";
   setButtonIconLabel(
     historyGalleryExportAllBtn,
-    "fa-solid fa-file-export",
-    `Export all (${folderModeText})`,
+    "fa-solid fa-download",
+    "Download",
   );
 }
 
@@ -2298,6 +2305,7 @@ function openHistoryGalleryInspector(entryId, { syncHash = true } = {}) {
 function closeHistoryGalleryInspector({ syncHash = true } = {}) {
   activeHistoryGalleryId = null;
   activeHistoryGalleryItemIndex = null;
+  draggedHistoryGalleryIndex = null;
   historyGalleryInspector.classList.add("hidden");
   historyList.classList.remove("hidden");
   historyEmpty.classList.toggle("hidden", historyEntries.length > 0);
@@ -2353,8 +2361,19 @@ function renderHistoryGalleryInspector(entry) {
   items.forEach((item, index) => {
     const thumb = document.createElement("li");
     thumb.className = "history-gallery-thumb";
+    thumb.dataset.galleryIndex = String(index);
     thumb.tabIndex = 0;
+    thumb.draggable = true;
+    let pendingLongPressTimer = null;
+    let touchStartPoint = null;
+    let touchDragActive = false;
     thumb.classList.toggle("active", index === selectedIndex);
+
+    const dragHandle = document.createElement("span");
+    dragHandle.className = "history-gallery-drag-handle";
+    dragHandle.title = "Drag to reorder";
+    dragHandle.setAttribute("aria-hidden", "true");
+    dragHandle.textContent = "⋮⋮";
 
     const preview = document.createElement("img");
     preview.src = item.thumbnailUrl || "";
@@ -2370,6 +2389,7 @@ function renderHistoryGalleryInspector(entry) {
     removeBtn.textContent = "×";
     removeBtn.title = "Remove image from gallery";
 
+    thumb.appendChild(dragHandle);
     thumb.appendChild(preview);
     thumb.appendChild(title);
     thumb.appendChild(removeBtn);
@@ -2379,15 +2399,178 @@ function renderHistoryGalleryInspector(entry) {
     });
 
     thumb.addEventListener("keydown", (event) => {
+      if (
+        event.altKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        event.preventDefault();
+        const delta = event.key === "ArrowUp" ? -1 : 1;
+        moveHistoryGalleryItem(entry.id, index, index + delta);
+        return;
+      }
+
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         selectHistoryGalleryItem(entry.id, index);
       }
     });
 
+    thumb.addEventListener("touchstart", (event) => {
+      if (event.target.closest(".history-gallery-thumb-remove")) {
+        return;
+      }
+
+      const touch = event.touches?.[0];
+      touchStartPoint = touch ? { x: touch.clientX, y: touch.clientY } : null;
+
+      if (pendingLongPressTimer) {
+        window.clearTimeout(pendingLongPressTimer);
+      }
+
+      pendingLongPressTimer = window.setTimeout(() => {
+        touchDragActive = true;
+        startTouchHistoryGalleryDrag(event, entry.id, index);
+      }, MOBILE_DRAG_LONG_PRESS_MS);
+    });
+
+    thumb.addEventListener("touchmove", (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) {
+        return;
+      }
+
+      if (!touchDragActive && touchStartPoint) {
+        const distance = Math.hypot(
+          touch.clientX - touchStartPoint.x,
+          touch.clientY - touchStartPoint.y,
+        );
+        if (distance > MOBILE_DRAG_CANCEL_MOVE_PX && pendingLongPressTimer) {
+          window.clearTimeout(pendingLongPressTimer);
+          pendingLongPressTimer = null;
+        }
+      }
+
+      if (touchDragActive) {
+        event.preventDefault();
+        updateTouchHistoryGalleryDrag(event);
+      }
+    });
+
+    thumb.addEventListener("touchend", () => {
+      if (pendingLongPressTimer) {
+        window.clearTimeout(pendingLongPressTimer);
+        pendingLongPressTimer = null;
+      }
+
+      if (touchDragActive) {
+        finishTouchHistoryGalleryDrag(entry.id);
+      }
+
+      touchDragActive = false;
+      touchStartPoint = null;
+    });
+
+    thumb.addEventListener("touchcancel", () => {
+      if (pendingLongPressTimer) {
+        window.clearTimeout(pendingLongPressTimer);
+        pendingLongPressTimer = null;
+      }
+      touchDragActive = false;
+      touchStartPoint = null;
+      cancelTouchHistoryGalleryDrag();
+    });
+
     removeBtn.addEventListener("click", (event) => {
       event.stopPropagation();
       removeImageFromHistoryGallery(entry.id, index);
+    });
+
+    thumb.addEventListener("dragstart", (event) => {
+      if (event.target.closest(".history-gallery-thumb-remove")) {
+        event.preventDefault();
+        return;
+      }
+
+      draggedHistoryGalleryIndex = index;
+      thumb.classList.add("dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(index));
+      }
+    });
+
+    thumb.addEventListener("dragend", () => {
+      if (pendingLongPressTimer) {
+        window.clearTimeout(pendingLongPressTimer);
+        pendingLongPressTimer = null;
+      }
+      touchDragActive = false;
+      touchStartPoint = null;
+      draggedHistoryGalleryIndex = null;
+      historyGalleryItems
+        .querySelectorAll(".history-gallery-thumb")
+        .forEach((node) => {
+          node.classList.remove(
+            "dragging",
+            "drag-over",
+            "drag-over-before",
+            "drag-over-after",
+          );
+        });
+    });
+
+    thumb.addEventListener("dragover", (event) => {
+      if (!Number.isInteger(draggedHistoryGalleryIndex)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+      updateHistoryGalleryDropIndicator(thumb, event.clientY);
+    });
+
+    thumb.addEventListener("dragleave", (event) => {
+      if (!thumb.contains(event.relatedTarget)) {
+        thumb.classList.remove(
+          "drag-over",
+          "drag-over-before",
+          "drag-over-after",
+        );
+      }
+    });
+
+    thumb.addEventListener("drop", (event) => {
+      event.preventDefault();
+      updateHistoryGalleryDropIndicator(thumb, event.clientY);
+
+      const fromData = Number.parseInt(
+        event.dataTransfer?.getData("text/plain"),
+        10,
+      );
+      const fromIndex = Number.isInteger(fromData)
+        ? fromData
+        : draggedHistoryGalleryIndex;
+
+      const dropTarget = getHistoryGalleryDropTarget();
+      const toIndex = Number.isInteger(dropTarget?.overIndex)
+        ? computeHistoryGalleryDropIndex(
+            fromIndex,
+            dropTarget.overIndex,
+            dropTarget.placeAfter,
+          )
+        : index;
+
+      if (
+        !Number.isInteger(fromIndex) ||
+        !Number.isInteger(toIndex) ||
+        fromIndex === toIndex
+      ) {
+        return;
+      }
+
+      moveHistoryGalleryItem(entry.id, fromIndex, toIndex);
     });
 
     historyGalleryItems.appendChild(thumb);
@@ -2538,6 +2721,222 @@ function removeImageFromHistoryGallery(entryId, removeIndex) {
   setStatus("Image removed from gallery.");
 }
 
+function moveHistoryGalleryItem(entryId, fromIndex, toIndex) {
+  const entry = historyEntries.find((item) => item.id === entryId);
+  if (
+    !entry ||
+    entry.type !== "gallery" ||
+    !Array.isArray(entry.galleryItems) ||
+    !entry.galleryItems.length
+  ) {
+    return;
+  }
+
+  const maxIndex = entry.galleryItems.length - 1;
+  const sourceIndex = Math.max(0, Math.min(fromIndex, maxIndex));
+  const targetIndex = Math.max(0, Math.min(toIndex, maxIndex));
+  if (sourceIndex === targetIndex) {
+    return;
+  }
+
+  const nextGalleryItems = [...entry.galleryItems];
+  const [movedItem] = nextGalleryItems.splice(sourceIndex, 1);
+  nextGalleryItems.splice(targetIndex, 0, movedItem);
+
+  updateHistoryEntryFields(entryId, { galleryItems: nextGalleryItems });
+  activeHistoryGalleryItemIndex = targetIndex;
+  renderHistory();
+  setStatus("Gallery item order updated.");
+}
+
+function findHistoryGalleryThumbFromTouch(touch) {
+  if (!touch) {
+    return null;
+  }
+
+  const node = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (!node) {
+    return null;
+  }
+
+  return node.closest(".history-gallery-thumb");
+}
+
+function clearHistoryGalleryDropIndicators() {
+  historyGalleryItems
+    .querySelectorAll(".history-gallery-thumb")
+    .forEach((node) => {
+      node.classList.remove("drag-over", "drag-over-before", "drag-over-after");
+    });
+}
+
+function updateHistoryGalleryDropIndicator(targetThumb, clientY) {
+  if (!targetThumb || !Number.isInteger(draggedHistoryGalleryIndex)) {
+    clearHistoryGalleryDropIndicators();
+    return;
+  }
+
+  const overIndex = Number.parseInt(targetThumb.dataset.galleryIndex, 10);
+  if (
+    !Number.isInteger(overIndex) ||
+    overIndex === draggedHistoryGalleryIndex
+  ) {
+    clearHistoryGalleryDropIndicators();
+    return;
+  }
+
+  clearHistoryGalleryDropIndicators();
+
+  const rect = targetThumb.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  const placeAfter = clientY >= midpoint;
+
+  if (!placeAfter) {
+    targetThumb.classList.add("drag-over", "drag-over-before");
+    return;
+  }
+
+  const nextThumb = targetThumb.nextElementSibling;
+  if (nextThumb?.classList.contains("history-gallery-thumb")) {
+    nextThumb.classList.add("drag-over", "drag-over-before");
+    return;
+  }
+
+  targetThumb.classList.add("drag-over", "drag-over-after");
+}
+
+function getHistoryGalleryDropTarget() {
+  const targetThumb = historyGalleryItems.querySelector(
+    ".history-gallery-thumb.drag-over-before, .history-gallery-thumb.drag-over-after",
+  );
+  if (!targetThumb) {
+    return null;
+  }
+
+  const overIndex = Number.parseInt(targetThumb.dataset.galleryIndex, 10);
+  if (!Number.isInteger(overIndex)) {
+    return null;
+  }
+
+  return {
+    overIndex,
+    placeAfter: targetThumb.classList.contains("drag-over-after"),
+  };
+}
+
+function computeHistoryGalleryDropIndex(sourceIndex, overIndex, placeAfter) {
+  if (!Number.isInteger(sourceIndex) || !Number.isInteger(overIndex)) {
+    return null;
+  }
+
+  if (placeAfter) {
+    return sourceIndex < overIndex ? overIndex : overIndex + 1;
+  }
+
+  return sourceIndex < overIndex ? overIndex - 1 : overIndex;
+}
+
+function startTouchHistoryGalleryDrag(event, entryId, fromIndex) {
+  if (!entryId || !Number.isInteger(fromIndex)) {
+    return;
+  }
+
+  draggedHistoryGalleryIndex = fromIndex;
+  historyGalleryItems
+    .querySelectorAll(".history-gallery-thumb")
+    .forEach((node) => {
+      const index = Number.parseInt(node.dataset.galleryIndex, 10);
+      node.classList.toggle("dragging", index === fromIndex);
+      node.classList.remove("drag-over", "drag-over-before", "drag-over-after");
+    });
+
+  updateTouchHistoryGalleryDrag(event);
+}
+
+function updateTouchHistoryGalleryDrag(event) {
+  if (!Number.isInteger(draggedHistoryGalleryIndex)) {
+    return;
+  }
+
+  const touch = event.touches?.[0] || event.changedTouches?.[0];
+  const overThumb = findHistoryGalleryThumbFromTouch(touch);
+  if (!touch || !overThumb) {
+    clearHistoryGalleryDropIndicators();
+    return;
+  }
+
+  updateHistoryGalleryDropIndicator(overThumb, touch.clientY);
+}
+
+function finishTouchHistoryGalleryDrag(entryId) {
+  if (!entryId || !Number.isInteger(draggedHistoryGalleryIndex)) {
+    cancelTouchHistoryGalleryDrag();
+    return;
+  }
+
+  const draggingIndex = draggedHistoryGalleryIndex;
+  const dropTarget = getHistoryGalleryDropTarget();
+  const targetIndex = Number.isInteger(dropTarget?.overIndex)
+    ? computeHistoryGalleryDropIndex(
+        draggingIndex,
+        dropTarget.overIndex,
+        dropTarget.placeAfter,
+      )
+    : null;
+
+  cancelTouchHistoryGalleryDrag();
+
+  if (!Number.isInteger(targetIndex) || targetIndex === draggingIndex) {
+    return;
+  }
+
+  moveHistoryGalleryItem(entryId, draggingIndex, targetIndex);
+}
+
+function cancelTouchHistoryGalleryDrag() {
+  draggedHistoryGalleryIndex = null;
+  historyGalleryItems
+    .querySelectorAll(".history-gallery-thumb")
+    .forEach((node) => {
+      node.classList.remove(
+        "dragging",
+        "drag-over",
+        "drag-over-before",
+        "drag-over-after",
+      );
+    });
+}
+
+function handleHistoryGalleryReorderHotkeys(event) {
+  if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
+    return;
+  }
+
+  if (activeViewName !== "history" || !activeHistoryGalleryId) {
+    return;
+  }
+
+  const target = event.target;
+  if (
+    target instanceof HTMLElement &&
+    (target.matches("input, textarea, select") || target.isContentEditable)
+  ) {
+    return;
+  }
+
+  const currentIndex = Number.isInteger(activeHistoryGalleryItemIndex)
+    ? activeHistoryGalleryItemIndex
+    : 0;
+  const delta = event.key === "ArrowUp" ? -1 : 1;
+
+  event.preventDefault();
+  moveHistoryGalleryItem(
+    activeHistoryGalleryId,
+    currentIndex,
+    currentIndex + delta,
+  );
+}
+
 function fillActiveHistoryGalleryDefaultCaption() {
   const context = getActiveHistoryGalleryContext();
   if (!context) {
@@ -2605,11 +3004,66 @@ function updateHistoryEntryFields(entryId, updates) {
 function setHistoryGalleryExportingState(isExporting) {
   exportingHistoryGalleryImages = isExporting;
   historyGalleryExportAllBtn.disabled = isExporting;
+  historyGalleryAddMoreBtn.disabled = isExporting;
   historyGalleryPrefixExportCheckbox.disabled = isExporting;
   historyGalleryInlineEditBtn.disabled = isExporting;
   historyHeaderTitleInput.disabled = isExporting;
   historyHeaderSubtitleInput.disabled = isExporting;
   updateHistoryGalleryExportAllButtonLabel();
+}
+
+function addMoreImagesToHistoryGallery() {
+  if (!activeHistoryGalleryId) {
+    setStatus("Open a gallery from history first.");
+    return;
+  }
+
+  const entry = historyEntries.find(
+    (item) => item.id === activeHistoryGalleryId,
+  );
+  if (!entry || entry.type !== "gallery") {
+    setStatus("Gallery not found.");
+    closeHistoryGalleryInspector();
+    return;
+  }
+
+  if (!isGalleryMode()) {
+    settings = {
+      ...settings,
+      galleryMode: true,
+    };
+    saveSettings();
+    applyGalleryModeUI();
+    galleryModeCheckbox.checked = true;
+  }
+
+  const galleryItems = getGalleryItems(entry);
+  selectedGalleryItems = new Map(
+    galleryItems.map((item) => [
+      item.pageId,
+      {
+        pageId: item.pageId,
+        title: item.title,
+        thumbnailUrl: item.thumbnailUrl,
+        imageUrl: item.imageUrl,
+        description: item.description || "",
+        author: item.author || "",
+        licenseShort: item.licenseShort || "",
+      },
+    ]),
+  );
+
+  currentGalleryHistoryId = entry.id;
+  galleryTitleInput.value = entry.galleryTitle || entry.title || "";
+  galleryDescriptionInput.value = getHistoryGalleryDescriptionText(entry);
+  resetGalleryDoneButtonState();
+  updateGallerySelectionList();
+  renderResults(currentResults, { append: false });
+  showDetails();
+  setActiveView("finder");
+  setStatus(
+    `Finder opened. Gallery loaded with ${galleryItems.length} image${galleryItems.length === 1 ? "" : "s"}; select more images to append.`,
+  );
 }
 
 function getGallerySlug(entry) {

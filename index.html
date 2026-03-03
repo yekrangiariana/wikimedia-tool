@@ -298,14 +298,30 @@
               <i class="fa-solid fa-xmark" aria-hidden="true"></i>
               <span>Close</span>
             </button>
-            <button id="historyGalleryExportAllBtn" type="button">
-              <i class="fa-solid fa-file-export" aria-hidden="true"></i>
-              <span>Export all</span>
-            </button>
-            <button id="historyGalleryCopyAllCaptionsBtn" type="button">
-              <i class="fa-solid fa-clone" aria-hidden="true"></i>
-              <span>Copy captions</span>
-            </button>
+            <div class="history-gallery-export-menu">
+              <button
+                id="historyGalleryExportMenuBtn"
+                type="button"
+                aria-haspopup="true"
+              >
+                <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+                <span>Actions</span>
+              </button>
+              <div class="history-gallery-export-menu-popover">
+                <button id="historyGalleryAddMoreBtn" type="button">
+                  <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                  <span>Images</span>
+                </button>
+                <button id="historyGalleryExportAllBtn" type="button">
+                  <i class="fa-solid fa-download" aria-hidden="true"></i>
+                  <span>Download</span>
+                </button>
+                <button id="historyGalleryCopyAllCaptionsBtn" type="button">
+                  <i class="fa-solid fa-clone" aria-hidden="true"></i>
+                  <span>Captions</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
