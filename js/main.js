@@ -114,6 +114,7 @@ const exportFormatSelect = document.getElementById("exportFormatSelect");
 const exportPathInput = document.getElementById("exportPathInput");
 const selectExportDirBtn = document.getElementById("selectExportDirBtn");
 const clearExportDirBtn = document.getElementById("clearExportDirBtn");
+const exportFolderSection = document.getElementById("exportFolderSection");
 const actionToast = document.getElementById("actionToast");
 
 const emptyState = document.getElementById("emptyState");
@@ -2723,28 +2724,24 @@ function updateExportDirectoryUI() {
   const pathLabel = settings.exportPathLabel || "";
 
   if (!isDirectoryExportSupported()) {
+    exportFolderSection.classList.add("unsupported");
     exportSupportText.textContent =
-      "This browser does not support direct folder export. Files will download normally.";
-    exportDirStatus.textContent = pathLabel
-      ? `Saved export path: ${pathLabel}`
-      : "No export path set.";
+      "Direct folder export requires Chrome or Edge. Files will download normally.";
     selectExportDirBtn.disabled = true;
     clearExportDirBtn.disabled = true;
     return;
   }
 
-  exportSupportText.textContent =
-    "Browser security hides absolute folder paths from websites. Use “Export path (manual)” to store the exact path text.";
+  exportFolderSection.classList.remove("unsupported");
+  exportSupportText.textContent = "";
 
   if (exportDirectoryHandle && exportDirectoryName) {
     exportDirStatus.textContent = pathLabel
-      ? `Current folder: ${exportDirectoryName} • Saved path: ${pathLabel}`
-      : `Current folder: ${exportDirectoryName}`;
+      ? `${exportDirectoryName} • ${pathLabel}`
+      : exportDirectoryName;
     clearExportDirBtn.disabled = false;
   } else {
-    exportDirStatus.textContent = pathLabel
-      ? `No folder handle set • Saved path: ${pathLabel}`
-      : "No export folder set.";
+    exportDirStatus.textContent = pathLabel || "No folder set";
     clearExportDirBtn.disabled = true;
   }
 

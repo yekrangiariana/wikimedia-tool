@@ -255,7 +255,10 @@
                 type="checkbox"
                 checked
               />
-              Use gallery folder path
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-copy">
+                <span class="toggle-title">Use gallery folder path</span>
+              </span>
             </label>
             <button id="historyGalleryExportAllBtn" type="button">
               Export all
@@ -388,7 +391,13 @@
 
         <label class="checkbox-inline" for="galleryModeCheckbox">
           <input id="galleryModeCheckbox" type="checkbox" />
-          Enable gallery mode
+          <span class="toggle-switch" aria-hidden="true"></span>
+          <span class="toggle-copy">
+            <span class="toggle-title">Enable gallery mode</span>
+            <span class="toggle-subtitle"
+              >Build reusable image collections from search results.</span
+            >
+          </span>
         </label>
 
         <label for="photoScanPagesSelect">
@@ -409,11 +418,10 @@
 
       <section class="settings-section export-settings-section">
         <h3>Export</h3>
-        <p id="exportSupportText" class="settings-note"></p>
-        <p id="exportDirStatus" class="settings-note"></p>
+
         <div class="export-settings-grid">
           <div class="settings-field">
-            <label for="exportMaxWidthInput">Max export width (px)</label>
+            <label for="exportMaxWidthInput">Width (px)</label>
             <input
               id="exportMaxWidthInput"
               type="number"
@@ -425,7 +433,7 @@
           </div>
 
           <div class="settings-field">
-            <label for="exportTargetKbInput">Target file size (KB)</label>
+            <label for="exportTargetKbInput">Size (KB)</label>
             <input
               id="exportTargetKbInput"
               type="number"
@@ -437,26 +445,33 @@
           </div>
 
           <div class="settings-field">
-            <label for="exportFormatSelect">File format</label>
+            <label for="exportFormatSelect">Format</label>
             <select id="exportFormatSelect">
-              <option value="webp">WebP (default)</option>
+              <option value="webp">WebP</option>
               <option value="jpg">JPG</option>
               <option value="png">PNG</option>
             </select>
           </div>
         </div>
 
-        <label for="exportPathInput">Export path (manual)</label>
-        <input
-          id="exportPathInput"
-          type="text"
-          placeholder="e.g. /Users/you/Sites/my-hugo-site/static/images"
-          autocomplete="off"
-        />
-        <div class="button-row">
-          <button id="selectExportDirBtn" type="button">Choose folder</button>
-          <button id="clearExportDirBtn" type="button">Clear folder</button>
+        <div id="exportFolderSection" class="export-folder-section">
+          <div class="export-folder-header">
+            <label for="exportPathInput">Export folder</label>
+            <p id="exportDirStatus" class="settings-note"></p>
+          </div>
+          <div class="export-folder-controls">
+            <input
+              id="exportPathInput"
+              type="text"
+              placeholder="Path label (for your reference)"
+              autocomplete="off"
+            />
+            <button id="selectExportDirBtn" type="button">Choose</button>
+            <button id="clearExportDirBtn" type="button">Clear</button>
+          </div>
         </div>
+
+        <p id="exportSupportText" class="settings-note export-support-note"></p>
       </section>
     </aside>
 
