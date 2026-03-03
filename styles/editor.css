@@ -77,6 +77,8 @@
   min-height: 560px;
   border-right: var(--border-light);
   background: var(--surface-muted);
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 #editorCanvas,
@@ -93,6 +95,7 @@
 
 #editorOverlay {
   z-index: 2;
+  touch-action: none;
 }
 
 #editorProgressOverlay {
@@ -295,6 +298,7 @@ body.editor-active #settingsBackdrop {
 
 body.editor-active #editorView {
   display: block;
+  overscroll-behavior-y: contain;
 }
 
 @media (max-width: 680px) {

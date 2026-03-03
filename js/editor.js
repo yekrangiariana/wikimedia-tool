@@ -188,9 +188,14 @@ export function createImageEditorController({
   let hasEdits = false;
   let operationHistory = [];
   let redoHistory = [];
+  let snapshotBaseOperationCount = 0;
+  let sessionSnapshots = [];
+  let redoSnapshots = [];
   let pointerInteractionMode = null;
   let pointerStartPoint = null;
   let pointerStartSelection = null;
+  const activeTouchPointers = new Map();
+  let multiTouchGestureStart = null;
   let cutoutInProgress = false;
   let editTaskInProgress = false;
   let changeEmissionVersion = 0;
@@ -204,6 +209,157 @@ export function createImageEditorController({
   const selectionMinSize = 24;
   const handleRadius = 8;
   const handleSize = 10;
+
+  function isTouchPointerEvent(event) {
+    return event?.pointerType === "touch";
+  }
+
+  function getTouchHandleRadius() {
+    return handleRadius * 2.5;
+  }
+
+  function updateTouchPointerPosition(event) {
+    if (!isTouchPointerEvent(event) || !cropMode || !renderBox) {
+      return;
+    }
+
+    activeTouchPointers.set(
+      event.pointerId,
+      clampPointToRenderBox(pointerToCanvasPoint(event)),
+    );
+  }
+
+  function removeTouchPointer(event) {
+    if (!isTouchPointerEvent(event)) {
+      return;
+    }
+
+    activeTouchPointers.delete(event.pointerId);
+    if (activeTouchPointers.size < 2) {
+      multiTouchGestureStart = null;
+      if (pointerInteractionMode === "pinch") {
+        pointerInteractionMode = null;
+      }
+    }
+  }
+
+  function getTwoTouchPoints() {
+    if (activeTouchPointers.size < 2) {
+      return null;
+    }
+
+    const pointers = [...activeTouchPointers.values()];
+    return [pointers[0], pointers[1]];
+  }
+
+  function beginMultiTouchGesture() {
+    if (!cropMode || !renderBox) {
+      return false;
+    }
+
+    const points = getTwoTouchPoints();
+    if (!points) {
+      return false;
+    }
+
+    if (!currentSelection) {
+      if (activeAspectRatio) {
+        ensureFixedSelection();
+      }
+      if (!currentSelection) {
+        return false;
+      }
+    }
+
+    const [firstPoint, secondPoint] = points;
+    const distance = Math.hypot(
+      secondPoint.x - firstPoint.x,
+      secondPoint.y - firstPoint.y,
+    );
+    if (!Number.isFinite(distance) || distance < 1) {
+      return false;
+    }
+
+    const selection = { ...currentSelection };
+    multiTouchGestureStart = {
+      distance,
+      midpoint: {
+        x: (firstPoint.x + secondPoint.x) / 2,
+        y: (firstPoint.y + secondPoint.y) / 2,
+      },
+      selection,
+      aspectRatio:
+        activeAspectRatio || selection.width / Math.max(selection.height, 1),
+    };
+    pointerInteractionMode = "pinch";
+    pointerStartPoint = null;
+    pointerStartSelection = null;
+    dragStart = null;
+    return true;
+  }
+
+  function applyMultiTouchGesture() {
+    if (!multiTouchGestureStart || !renderBox || !currentSelection) {
+      return;
+    }
+
+    const points = getTwoTouchPoints();
+    if (!points) {
+      return;
+    }
+
+    const [firstPoint, secondPoint] = points;
+    const distance = Math.hypot(
+      secondPoint.x - firstPoint.x,
+      secondPoint.y - firstPoint.y,
+    );
+    if (!Number.isFinite(distance) || distance < 1) {
+      return;
+    }
+
+    const midpoint = {
+      x: (firstPoint.x + secondPoint.x) / 2,
+      y: (firstPoint.y + secondPoint.y) / 2,
+    };
+    const start = multiTouchGestureStart;
+    const ratio = start.aspectRatio || 1;
+    const scale = clamp(distance / Math.max(start.distance, 1), 0.35, 4);
+
+    let width = Math.max(selectionMinSize, start.selection.width * scale);
+    let height = Math.max(selectionMinSize, width / ratio);
+
+    const maxWidthByBounds = Math.min(
+      renderBox.drawWidth,
+      renderBox.drawHeight * ratio,
+    );
+    width = Math.min(width, maxWidthByBounds);
+    height = width / ratio;
+
+    const startCenterX = start.selection.x + start.selection.width / 2;
+    const startCenterY = start.selection.y + start.selection.height / 2;
+    let centerX = startCenterX + (midpoint.x - start.midpoint.x);
+    let centerY = startCenterY + (midpoint.y - start.midpoint.y);
+
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    centerX = clamp(
+      centerX,
+      renderBox.x + halfWidth,
+      renderBox.x + renderBox.drawWidth - halfWidth,
+    );
+    centerY = clamp(
+      centerY,
+      renderBox.y + halfHeight,
+      renderBox.y + renderBox.drawHeight - halfHeight,
+    );
+
+    currentSelection = {
+      x: centerX - halfWidth,
+      y: centerY - halfHeight,
+      width,
+      height,
+    };
+  }
 
   function notify(message) {
     if (typeof onStatus === "function") {
@@ -333,6 +489,62 @@ export function createImageEditorController({
     }
 
     eraserOpacityValueEl.textContent = `${Math.round(getEraserOpacity() * 100)}%`;
+  }
+
+  function initializeSessionSnapshots() {
+    snapshotBaseOperationCount = operationHistory.length;
+    redoSnapshots = [];
+    if (!workingCanvas) {
+      sessionSnapshots = [];
+      return;
+    }
+
+    sessionSnapshots = [cloneCanvas(workingCanvas)];
+  }
+
+  function syncSessionSnapshotAfterEdit() {
+    if (!workingCanvas) {
+      return;
+    }
+
+    const relativeOperationCount =
+      operationHistory.length - snapshotBaseOperationCount;
+    if (relativeOperationCount < 0 || sessionSnapshots.length === 0) {
+      initializeSessionSnapshots();
+      return;
+    }
+
+    const expectedLength = relativeOperationCount + 1;
+    if (sessionSnapshots.length === expectedLength) {
+      sessionSnapshots[sessionSnapshots.length - 1] =
+        cloneCanvas(workingCanvas);
+    } else if (sessionSnapshots.length === expectedLength - 1) {
+      sessionSnapshots.push(cloneCanvas(workingCanvas));
+    } else {
+      initializeSessionSnapshots();
+      return;
+    }
+
+    redoSnapshots = [];
+  }
+
+  function canUseSnapshotUndo() {
+    const relativeOperationCount =
+      operationHistory.length - snapshotBaseOperationCount;
+    return (
+      relativeOperationCount > 0 &&
+      sessionSnapshots.length === relativeOperationCount + 1
+    );
+  }
+
+  function canUseSnapshotRedo() {
+    const relativeOperationCount =
+      operationHistory.length - snapshotBaseOperationCount;
+    return (
+      redoHistory.length > 0 &&
+      redoSnapshots.length === redoHistory.length &&
+      sessionSnapshots.length === relativeOperationCount + 1
+    );
   }
 
   function syncDimensionsText() {
@@ -505,6 +717,8 @@ export function createImageEditorController({
     pointerInteractionMode = null;
     pointerStartPoint = null;
     pointerStartSelection = null;
+    activeTouchPointers.clear();
+    multiTouchGestureStart = null;
     if (renderNow) {
       render();
     }
@@ -531,7 +745,7 @@ export function createImageEditorController({
     );
   }
 
-  function detectSelectionHit(point) {
+  function detectSelectionHit(point, customHandleRadius = handleRadius) {
     if (!currentSelection) {
       return "none";
     }
@@ -549,7 +763,7 @@ export function createImageEditorController({
         point.x - handlePoint.x,
         point.y - handlePoint.y,
       );
-      if (distance <= handleRadius) {
+      if (distance <= customHandleRadius) {
         return mode;
       }
     }
@@ -960,6 +1174,7 @@ export function createImageEditorController({
       });
       redoHistory = [];
       clearBackgroundSourceCache();
+      syncSessionSnapshotAfterEdit();
       await emitEditorChange();
     }
 
@@ -970,6 +1185,12 @@ export function createImageEditorController({
   }
 
   function handlePointerDown(event) {
+    updateTouchPointerPosition(event);
+
+    if (isTouchPointerEvent(event) && (cropMode || eraserMode)) {
+      event.preventDefault();
+    }
+
     if (eraserMode) {
       eraserCursorPoint = clampPointToRenderBox(pointerToCanvasPoint(event));
       beginEraserStroke(event);
@@ -982,10 +1203,22 @@ export function createImageEditorController({
 
     const point = clampPointToRenderBox(pointerToCanvasPoint(event));
 
+    if (isTouchPointerEvent(event) && activeTouchPointers.size >= 2) {
+      if (beginMultiTouchGesture()) {
+        overlayEl.setPointerCapture(event.pointerId);
+        drawSelectionOverlay();
+        updateToolbarState();
+      }
+      return;
+    }
+
     if (activeAspectRatio) {
       ensureFixedSelection();
 
-      const hit = detectSelectionHit(point);
+      const hit = detectSelectionHit(
+        point,
+        isTouchPointerEvent(event) ? getTouchHandleRadius() : handleRadius,
+      );
       if (hit === "none") {
         updateOverlayCursorForPoint(point);
         return;
@@ -1000,13 +1233,35 @@ export function createImageEditorController({
       return;
     }
 
+    if (currentSelection && pointInSelection(point, currentSelection)) {
+      pointerInteractionMode = "move";
+      pointerStartPoint = point;
+      pointerStartSelection = { ...currentSelection };
+      overlayEl.setPointerCapture(event.pointerId);
+      drawSelectionOverlay();
+      return;
+    }
+
     dragStart = point;
+    pointerInteractionMode = null;
+    pointerStartPoint = null;
+    pointerStartSelection = null;
     currentSelection = { x: point.x, y: point.y, width: 0, height: 0 };
     overlayEl.setPointerCapture(event.pointerId);
     drawSelectionOverlay();
   }
 
   function handlePointerMove(event) {
+    updateTouchPointerPosition(event);
+
+    if (
+      isTouchPointerEvent(event) &&
+      cropMode &&
+      (pointerInteractionMode || activeTouchPointers.size >= 1)
+    ) {
+      event.preventDefault();
+    }
+
     if (eraserMode) {
       moveEraserStroke(event);
       return;
@@ -1017,6 +1272,19 @@ export function createImageEditorController({
     }
 
     const point = clampPointToRenderBox(pointerToCanvasPoint(event));
+
+    if (
+      isTouchPointerEvent(event) &&
+      (pointerInteractionMode === "pinch" || activeTouchPointers.size >= 2)
+    ) {
+      if (!multiTouchGestureStart) {
+        beginMultiTouchGesture();
+      }
+      applyMultiTouchGesture();
+      drawSelectionOverlay();
+      updateToolbarState();
+      return;
+    }
 
     if (activeAspectRatio) {
       if (!pointerInteractionMode) {
@@ -1036,6 +1304,11 @@ export function createImageEditorController({
     }
 
     if (!dragStart) {
+      if (pointerInteractionMode === "move") {
+        moveSelectionFromPointer(point);
+        drawSelectionOverlay();
+        updateToolbarState();
+      }
       return;
     }
 
@@ -1054,6 +1327,12 @@ export function createImageEditorController({
   }
 
   async function handlePointerUp(event) {
+    if (isTouchPointerEvent(event) && (cropMode || eraserMode)) {
+      event.preventDefault();
+    }
+
+    removeTouchPointer(event);
+
     if (eraserMode) {
       await finishEraserStroke(event);
       return;
@@ -1067,8 +1346,12 @@ export function createImageEditorController({
       pointerInteractionMode = null;
       pointerStartPoint = null;
       pointerStartSelection = null;
+      multiTouchGestureStart = null;
     } else {
       dragStart = null;
+      pointerInteractionMode = null;
+      pointerStartPoint = null;
+      pointerStartSelection = null;
       currentSelection = normalizeSelection(currentSelection);
     }
 
@@ -1160,8 +1443,11 @@ export function createImageEditorController({
       onChange({
         editKey: currentMeta.editKey,
         previewUrl: "",
+        title: currentMeta.title,
         fileName: currentMeta.fileName,
         originalImageUrl: currentMeta.imageUrl,
+        thumbnailUrl: currentMeta.thumbnailUrl,
+        pageId: currentMeta.pageId,
         history: [],
       });
       return;
@@ -1184,8 +1470,11 @@ export function createImageEditorController({
     onChange({
       editKey: currentMeta.editKey,
       previewUrl,
+      title: currentMeta.title,
       fileName: currentMeta.fileName,
       originalImageUrl: currentMeta.imageUrl,
+      thumbnailUrl: currentMeta.thumbnailUrl,
+      pageId: currentMeta.pageId,
       history: cropHistory,
       operations: operationHistory.map((step) => ({ ...step })),
       previewOptimized: true,
@@ -1280,6 +1569,7 @@ export function createImageEditorController({
       operationHistory.push({ type: "cutout" });
       redoHistory = [];
       clearBackgroundSourceCache();
+      syncSessionSnapshotAfterEdit();
 
       hasEdits = true;
       clearSelection({ renderNow: false });
@@ -1348,6 +1638,7 @@ export function createImageEditorController({
       redoHistory = [];
       clearBackgroundSourceCache();
       hasEdits = true;
+      syncSessionSnapshotAfterEdit();
       clearSelection({ renderNow: false });
       clearFixedAspectOverlay();
       notifyTimed("Crop applied", startedAt);
@@ -1395,6 +1686,7 @@ export function createImageEditorController({
       redoHistory = [];
       workingCanvas = applySolidBackground(backgroundSourceCanvas, color);
       hasEdits = true;
+      syncSessionSnapshotAfterEdit();
       clearSelection({ renderNow: false });
       notifyTimed("Background colour applied", startedAt);
       await emitEditorChange();
@@ -1415,12 +1707,31 @@ export function createImageEditorController({
     const startedAt = performance.now();
     try {
       clearBackgroundSourceCache();
+      const canUseSnapshot = canUseSnapshotUndo();
       const lastOperation = operationHistory[operationHistory.length - 1];
       operationHistory = operationHistory.slice(0, -1);
       if (lastOperation) {
         redoHistory.push(lastOperation);
       }
-      await rebuildWorkingFromHistory();
+
+      if (canUseSnapshot) {
+        const removedSnapshot = sessionSnapshots.pop();
+        if (removedSnapshot) {
+          redoSnapshots.push(removedSnapshot);
+        }
+
+        const previousSnapshot = sessionSnapshots[sessionSnapshots.length - 1];
+        if (previousSnapshot) {
+          workingCanvas = cloneCanvas(previousSnapshot);
+        } else {
+          await rebuildWorkingFromHistory();
+          initializeSessionSnapshots();
+        }
+      } else {
+        await rebuildWorkingFromHistory();
+        initializeSessionSnapshots();
+      }
+
       hasEdits = operationHistory.length > 0;
       clearSelection({ renderNow: false });
       notifyTimed("Last edit removed", startedAt);
@@ -1442,12 +1753,27 @@ export function createImageEditorController({
     const startedAt = performance.now();
     try {
       clearBackgroundSourceCache();
+      const canUseSnapshot = canUseSnapshotRedo();
       const restoredOperation = redoHistory[redoHistory.length - 1];
       redoHistory = redoHistory.slice(0, -1);
       if (restoredOperation) {
         operationHistory.push(restoredOperation);
       }
-      await rebuildWorkingFromHistory();
+
+      if (canUseSnapshot) {
+        const restoredSnapshot = redoSnapshots.pop();
+        if (restoredSnapshot) {
+          sessionSnapshots.push(restoredSnapshot);
+          workingCanvas = cloneCanvas(restoredSnapshot);
+        } else {
+          await rebuildWorkingFromHistory();
+          initializeSessionSnapshots();
+        }
+      } else {
+        await rebuildWorkingFromHistory();
+        initializeSessionSnapshots();
+      }
+
       hasEdits = operationHistory.length > 0;
       clearSelection({ renderNow: false });
       notifyTimed("Edit restored", startedAt);
@@ -1478,6 +1804,7 @@ export function createImageEditorController({
       operationHistory = [];
       redoHistory = [];
       await rebuildWorkingFromHistory();
+      initializeSessionSnapshots();
       hasEdits = false;
       clearSelection({ renderNow: false });
       clearFixedAspectOverlay();
@@ -1532,6 +1859,8 @@ export function createImageEditorController({
       title: meta.title || "Image editor",
       fileName: meta.fileName || "edited-image.png",
       imageUrl: meta.imageUrl,
+      thumbnailUrl: meta.thumbnailUrl || "",
+      pageId: Number.isInteger(meta.pageId) ? meta.pageId : null,
       editKey: meta.editKey || "",
     };
 
@@ -1564,6 +1893,7 @@ export function createImageEditorController({
     if (operationHistory.length > 0 && sourceUrl === meta.imageUrl) {
       await rebuildWorkingFromHistory();
     }
+    initializeSessionSnapshots();
     clearSelection();
     sizeStageCanvases();
     render();
@@ -1582,6 +1912,9 @@ export function createImageEditorController({
     hasEdits = false;
     operationHistory = [];
     redoHistory = [];
+    snapshotBaseOperationCount = 0;
+    sessionSnapshots = [];
+    redoSnapshots = [];
     originalCanvas = null;
     originalCanvasLoadPromise = null;
     backgroundSourceCanvas = null;

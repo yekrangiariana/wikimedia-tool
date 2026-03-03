@@ -658,6 +658,7 @@ copyShortcodeBtn.addEventListener("click", async () => {
   }
 
   saveToHistory({
+    pageId: selectedImage.pageId,
     title: selectedImage.title,
     thumbnailUrl: selectedImage.thumbnailUrl,
     imageUrl: selectedImage.imageUrl,
@@ -713,6 +714,7 @@ downloadImageBtn.addEventListener("click", async () => {
     const savedToFolder = await exportBlob(blob, fileName);
     const kb = Math.round(blob.size / 1024);
     saveToHistory({
+      pageId: selectedImage.pageId,
       title: selectedImage.title,
       thumbnailUrl: selectedImage.thumbnailUrl,
       imageUrl: selectedImage.imageUrl,
@@ -1316,6 +1318,20 @@ function buildImageEditKey(image, context = "finder") {
   return `${contextPrefix}:fallback:${fallback}`;
 }
 
+function getFinderUrlEditAliasKey(editKey, imageUrl) {
+  if (
+    typeof editKey !== "string" ||
+    !editKey.startsWith("finder:page:") ||
+    typeof imageUrl !== "string" ||
+    !imageUrl.trim()
+  ) {
+    return "";
+  }
+
+  const aliasKey = buildImageEditKey({ imageUrl }, "finder");
+  return aliasKey !== editKey ? aliasKey : "";
+}
+
 function getImageEditState(key) {
   if (!key) {
     return null;
@@ -1620,6 +1636,8 @@ function handleEditorImageChange(payload) {
     return;
   }
 
+  const aliasKey = getFinderUrlEditAliasKey(key, payload?.originalImageUrl);
+
   const previousState = getImageEditState(key);
   if (
     isObjectUrl(previousState?.previewUrl) &&
@@ -1637,47 +1655,128 @@ function handleEditorImageChange(payload) {
     imageEditState.delete(key);
     void deletePreviewBlobFromCache(key);
     delete persistedImageEdits[key];
+
+    if (aliasKey) {
+      imageEditState.delete(aliasKey);
+      void deletePreviewBlobFromCache(aliasKey);
+      delete persistedImageEdits[aliasKey];
+    }
+
     saveImageEdits();
     applyEditedPreviewToCurrentUi({
       key,
       previewUrl: "",
       originalImageUrl: payload.originalImageUrl || "",
     });
+    if (aliasKey) {
+      applyEditedPreviewToCurrentUi({
+        key: aliasKey,
+        previewUrl: "",
+        originalImageUrl: payload.originalImageUrl || "",
+      });
+    }
     return;
   }
 
-  imageEditState.set(key, {
+  const nextState = {
     previewUrl: payload.previewUrl,
     fileName: payload.fileName,
     history: nextHistory,
     operations: nextOperations,
     previewOptimized: payload.previewOptimized !== false,
     previewCacheChecked: true,
-  });
+  };
+
+  imageEditState.set(key, nextState);
+  if (aliasKey) {
+    imageEditState.set(aliasKey, { ...nextState });
+  }
 
   void fetch(payload.previewUrl)
     .then((response) => response.blob())
-    .then((blob) => savePreviewBlobToCache(key, blob))
+    .then((blob) => {
+      void savePreviewBlobToCache(key, blob);
+      if (aliasKey) {
+        void savePreviewBlobToCache(aliasKey, blob);
+      }
+    })
     .catch(() => {});
 
   if (nextOperations.length > 0) {
-    persistedImageEdits[key] = {
+    const persistedEntry = {
       fileName: payload.fileName,
       history: nextHistory,
       operations: nextOperations,
       previewOptimized: payload.previewOptimized !== false,
       updatedAt: Date.now(),
     };
+    persistedImageEdits[key] = persistedEntry;
+    if (aliasKey) {
+      persistedImageEdits[aliasKey] = {
+        ...persistedEntry,
+      };
+    }
   } else {
     delete persistedImageEdits[key];
+    if (aliasKey) {
+      delete persistedImageEdits[aliasKey];
+    }
   }
   saveImageEdits();
+
+  if (key.startsWith("finder:") && payload.previewUrl) {
+    const parsedPageId = Number.parseInt(payload.pageId, 10);
+    const normalizedPageId = Number.isInteger(parsedPageId)
+      ? parsedPageId
+      : null;
+    const normalizedImageUrl =
+      typeof payload.originalImageUrl === "string"
+        ? payload.originalImageUrl
+        : "";
+
+    const existingSingleEntry = historyEntries.find((item) => {
+      if (item?.type === "gallery") {
+        return false;
+      }
+
+      if (normalizedPageId !== null && Number.isInteger(item?.pageId)) {
+        return item.pageId === normalizedPageId;
+      }
+
+      return (
+        Boolean(normalizedImageUrl) && item?.imageUrl === normalizedImageUrl
+      );
+    });
+
+    if (
+      !existingSingleEntry ||
+      (normalizedPageId !== null &&
+        !Number.isInteger(existingSingleEntry.pageId))
+    ) {
+      saveToHistory({
+        pageId: normalizedPageId,
+        title: payload.title,
+        thumbnailUrl: payload.thumbnailUrl || normalizedImageUrl,
+        imageUrl: normalizedImageUrl,
+        fileName: payload.fileName,
+        copiedText: "",
+        layout: "",
+      });
+    }
+  }
 
   applyEditedPreviewToCurrentUi({
     key,
     previewUrl: payload.previewUrl,
     originalImageUrl: payload.originalImageUrl || "",
   });
+  if (aliasKey) {
+    applyEditedPreviewToCurrentUi({
+      key: aliasKey,
+      previewUrl: payload.previewUrl,
+      originalImageUrl: payload.originalImageUrl || "",
+    });
+  }
 }
 
 function enterEditorMode() {
@@ -1791,6 +1890,8 @@ function openFinderEditor() {
     startImageUrl: existingEdit?.previewUrl || selectedImage.imageUrl,
     title: selectedImage.title,
     fileName: getImageFileName(selectedImage),
+    thumbnailUrl: selectedImage.thumbnailUrl,
+    pageId: selectedImage.pageId,
     editKey,
     history: Array.isArray(existingEdit?.history) ? existingEdit.history : [],
     operations: Array.isArray(existingEdit?.operations)
@@ -1852,6 +1953,8 @@ function openSingleVaultEditor(entryId) {
     startImageUrl: existingEdit?.previewUrl || imageUrl,
     title: entry.title || "Vault image",
     fileName: entry.fileName || getImageFileName(entry),
+    thumbnailUrl: entry.thumbnailUrl,
+    pageId: Number.isInteger(entry.pageId) ? entry.pageId : null,
     editKey,
     history: Array.isArray(existingEdit?.history) ? existingEdit.history : [],
     operations: Array.isArray(existingEdit?.operations)
@@ -2822,6 +2925,7 @@ function upsertHistoryEntry(entry) {
 }
 
 function saveToHistory({
+  pageId,
   title,
   thumbnailUrl,
   imageUrl,
@@ -2856,6 +2960,7 @@ function saveToHistory({
     const existingEntry = historyEntries[existingIndex];
     const mergedEntry = {
       ...existingEntry,
+      pageId: Number.isInteger(pageId) ? pageId : existingEntry.pageId,
       title: title || existingEntry.title,
       thumbnailUrl: thumbnailUrl || existingEntry.thumbnailUrl,
       imageUrl: imageUrl || existingEntry.imageUrl,
@@ -2873,6 +2978,7 @@ function saveToHistory({
   } else {
     const entry = {
       id: crypto.randomUUID(),
+      pageId: Number.isInteger(pageId) ? pageId : null,
       title,
       thumbnailUrl,
       imageUrl,
@@ -4634,11 +4740,17 @@ function sanitizeHistoryEntries(parsed) {
     return [];
   }
 
+  const normalizePageId = (value) => {
+    const parsedId = Number.parseInt(value, 10);
+    return Number.isInteger(parsedId) ? parsedId : null;
+  };
+
   return parsed
     .filter((item) => item && typeof item === "object")
     .map((item) => ({
       ...item,
       type: item.type === "gallery" ? "gallery" : "image",
+      pageId: normalizePageId(item.pageId),
       title: typeof item.title === "string" ? item.title : "",
       thumbnailUrl:
         typeof item.thumbnailUrl === "string" ? item.thumbnailUrl : "",
@@ -4657,7 +4769,7 @@ function sanitizeHistoryEntries(parsed) {
               (galleryItem) => galleryItem && typeof galleryItem === "object",
             )
             .map((galleryItem) => ({
-              pageId: galleryItem.pageId,
+              pageId: normalizePageId(galleryItem.pageId),
               title:
                 typeof galleryItem.title === "string" ? galleryItem.title : "",
               thumbnailUrl:

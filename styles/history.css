@@ -117,13 +117,21 @@
 
 .history-gallery-export-menu-popover {
   position: absolute;
-  top: calc(100% + 4px);
+  top: 100%;
   right: 0;
   min-width: 160px;
   border: var(--border-light);
   background: var(--surface);
   padding: 4px;
-  display: none;
+  display: grid;
+  gap: 4px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease;
   z-index: 5;
 }
 
@@ -135,8 +143,10 @@
 
 .history-gallery-export-menu:hover .history-gallery-export-menu-popover,
 .history-gallery-export-menu:focus-within .history-gallery-export-menu-popover {
-  display: grid;
-  gap: 4px;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 .history-gallery-export-option {

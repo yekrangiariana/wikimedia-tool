@@ -179,6 +179,52 @@
   overflow: hidden;
 }
 
+.finder-preview-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.finder-preview-actions-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  border: var(--border-light);
+  background: var(--surface);
+  padding: 4px;
+  box-shadow: var(--shadow-panel);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease;
+  z-index: 4;
+}
+
+.finder-preview-actions-popover button {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+.finder-preview-actions:hover .finder-preview-actions-popover,
+.finder-preview-actions:focus-within .finder-preview-actions-popover {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.button-row--finder-bottom {
+  justify-content: flex-end;
+}
+
 .progress-overlay {
   position: absolute;
   inset: 0;
