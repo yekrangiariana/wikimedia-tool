@@ -175,6 +175,72 @@
   background: var(--surface-muted);
 }
 
+.editable-preview {
+  overflow: hidden;
+}
+
+.progress-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: #ffffff;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  overflow: hidden;
+}
+
+.progress-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    rgba(66, 99, 235, 0.08),
+    rgba(104, 138, 245, 0.18),
+    rgba(50, 168, 201, 0.08)
+  );
+  background-size: 220% 220%;
+  animation: progress-gradient-shift 1.8s linear infinite;
+}
+
+.progress-overlay > span {
+  position: relative;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.38);
+  border: var(--border-faint);
+  border-color: rgba(255, 255, 255, 0.5);
+  padding: 8px 12px;
+}
+
+.progress-notice {
+  position: fixed;
+  right: 20px;
+  top: 20px;
+  z-index: 125;
+  background: rgba(18, 24, 38, 0.88);
+  color: #ffffff;
+  border: var(--border-faint);
+  border-color: rgba(255, 255, 255, 0.2);
+  padding: 10px 14px;
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+@keyframes progress-gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
 .meta h2 {
   margin: 0 0 10px;
   font-size: var(--font-size-base);

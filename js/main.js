@@ -10,10 +10,16 @@ import {
   stripHtml,
   triggerDownload,
 } from "./utils.js";
+import { createImageEditorController } from "./editor.js";
+import {
+  buildEditedPreviewUrlFromImageUrl,
+  normalizeEditOperations,
+} from "./editPipeline.js";
 
 const API_BASE = "https://commons.wikimedia.org/w/api.php";
 const SEARCH_LIMIT = 50;
 const PHOTO_DATE_SCAN_PAGES_DEFAULT = 6;
+const PREVIEW_THUMB_WIDTH = 160;
 const DOWNLOAD_MAX_WIDTH = 1920;
 const DOWNLOAD_MAX_BYTES = 150 * 1024;
 const EXPORT_WIDTH_MIN = 320;
@@ -23,9 +29,12 @@ const EXPORT_TARGET_KB_MAX = 5000;
 const EXPORT_FORMATS = ["webp", "jpg", "png"];
 const HISTORY_STORAGE_KEY = "wikimediaTool.history.v1";
 const SETTINGS_STORAGE_KEY = "wikimediaTool.settings.v1";
+const IMAGE_EDITS_STORAGE_KEY = "wikimediaTool.imageEdits.v1";
 const DIRECTORY_DB_NAME = "wikimediaTool.storage";
 const DIRECTORY_STORE_NAME = "kv";
+const PREVIEW_CACHE_STORE_NAME = "previewCache";
 const DIRECTORY_HANDLE_KEY = "exportDirectoryHandle";
+const HISTORY_INDEXED_DB_KEY = "historyEntries";
 const DEFAULT_SETTINGS = {
   gridColumns: 3,
   exportPathLabel: "",
@@ -53,14 +62,11 @@ const historySingleList = document.getElementById("historySingleList");
 const historyEmpty = document.getElementById("historyEmpty");
 const historyHeaderTitle = document.getElementById("historyHeaderTitle");
 const historyHeaderSubtitle = document.getElementById("historyHeaderSubtitle");
-const historyHeaderTitleInput = document.getElementById(
-  "historyHeaderTitleInput",
+const historyHeaderTitleEditBtn = document.getElementById(
+  "historyHeaderTitleEditBtn",
 );
-const historyHeaderSubtitleInput = document.getElementById(
-  "historyHeaderSubtitleInput",
-);
-const historyGalleryInlineEditBtn = document.getElementById(
-  "historyGalleryInlineEditBtn",
+const historyHeaderSubtitleEditBtn = document.getElementById(
+  "historyHeaderSubtitleEditBtn",
 );
 const historyGalleryHeaderBar = document.getElementById(
   "historyGalleryHeaderBar",
@@ -90,6 +96,9 @@ const historyGalleryDetailsEmpty = document.getElementById(
   "historyGalleryDetailsEmpty",
 );
 const historyGalleryPreview = document.getElementById("historyGalleryPreview");
+const historyGalleryProgressOverlay = document.getElementById(
+  "historyGalleryProgressOverlay",
+);
 const historyGalleryItemTitle = document.getElementById(
   "historyGalleryItemTitle",
 );
@@ -130,12 +139,59 @@ const selectExportDirBtn = document.getElementById("selectExportDirBtn");
 const clearExportDirBtn = document.getElementById("clearExportDirBtn");
 const exportFolderSection = document.getElementById("exportFolderSection");
 const actionToast = document.getElementById("actionToast");
+const progressNotice = document.getElementById("progressNotice");
+const editorView = document.getElementById("editorView");
+const detailEditBtn = document.getElementById("detailEditBtn");
+const historyGalleryEditBtn = document.getElementById("historyGalleryEditBtn");
+const editorStage = document.getElementById("editorStage");
+const editorProgressOverlay = document.getElementById("editorProgressOverlay");
+const editorCanvas = document.getElementById("editorCanvas");
+const editorOverlay = document.getElementById("editorOverlay");
+const editorBackBtn = document.getElementById("editorBackBtn");
+const editorCropToggleBtn = document.getElementById("editorCropToggleBtn");
+const editorRemoveBgBtn = document.getElementById("editorRemoveBgBtn");
+const editorBackgroundBtn = document.getElementById("editorBackgroundBtn");
+const editorEraserBtn = document.getElementById("editorEraserBtn");
+const editorApplyCropBtn = document.getElementById("editorApplyCropBtn");
+const editorApplyBackgroundBtn = document.getElementById(
+  "editorApplyBackgroundBtn",
+);
+const editorEraserContent = document.getElementById("editorEraserContent");
+const editorEraserSizeInput = document.getElementById("editorEraserSizeInput");
+const editorEraserSizeValue = document.getElementById("editorEraserSizeValue");
+const editorEraserOpacityInput = document.getElementById(
+  "editorEraserOpacityInput",
+);
+const editorEraserOpacityValue = document.getElementById(
+  "editorEraserOpacityValue",
+);
+const editorEraserUndoBtn = document.getElementById("editorEraserUndoBtn");
+const editorEraserRedoBtn = document.getElementById("editorEraserRedoBtn");
+const editorUndoBtn = document.getElementById("editorUndoBtn");
+const editorResetBtn = document.getElementById("editorResetBtn");
+const editorDownloadBtn = document.getElementById("editorDownloadBtn");
+const editorTitle = document.getElementById("editorTitle");
+const editorDimensions = document.getElementById("editorDimensions");
+const editorCropContent = document.getElementById("editorCropContent");
+const editorBackgroundContent = document.getElementById(
+  "editorBackgroundContent",
+);
+const editorCropHint = document.getElementById("editorCropHint");
+const editorAspectRatioRow = document.getElementById("editorAspectRatioRow");
+const editorHistoryInfo = document.getElementById("editorHistoryInfo");
+const editorAspectRatioSelect = document.getElementById(
+  "editorAspectRatioSelect",
+);
+const editorBackgroundColorInput = document.getElementById(
+  "editorBackgroundColorInput",
+);
 
 const emptyState = document.getElementById("emptyState");
 const detailsEl = document.getElementById("details");
 const detailsPanel = document.querySelector(".details-panel");
 const detailsToggleBtn = document.getElementById("detailsToggleBtn");
 const detailPreview = document.getElementById("detailPreview");
+const detailProgressOverlay = document.getElementById("detailProgressOverlay");
 const detailTitle = document.getElementById("detailTitle");
 const detailAuthor = document.getElementById("detailAuthor");
 const detailLicense = document.getElementById("detailLicense");
@@ -180,6 +236,9 @@ let exportDirectoryHandle = null;
 let exportDirectoryName = "";
 let activeViewName = "finder";
 let actionToastTimer = null;
+let editorSettingsWasOpen = false;
+const imageEditState = new Map();
+let persistedImageEdits = {};
 let scanningPhotoDate = false;
 let selectedGalleryItems = new Map();
 let currentGalleryHistoryId = null;
@@ -189,16 +248,106 @@ let galleryDoneLinkEntryId = null;
 let activeHistoryGalleryId = null;
 let activeHistoryGalleryItemIndex = null;
 let draggedHistoryGalleryIndex = null;
-let isHistoryHeaderEditing = false;
-let historyHeaderOriginalTitle = "";
-let historyHeaderOriginalDescription = "";
 const historyGalleryDrafts = new Map();
 let exportingHistoryGalleryImages = false;
 const ROUTE_FINDER = "finder";
 const ROUTE_VAULT = "vault";
 let isApplyingHashRoute = false;
+let activeEditorRouteId = null;
+let lastEditorOpenRequest = null;
+const editorRouteRequests = new Map();
 const MOBILE_DRAG_LONG_PRESS_MS = 220;
 const MOBILE_DRAG_CANCEL_MOVE_PX = 10;
+const HISTORY_GALLERY_AUTOSCROLL_EDGE_PX = 64;
+const HISTORY_GALLERY_AUTOSCROLL_MAX_STEP = 18;
+let historyGalleryAutoScrollRaf = null;
+let historyGalleryAutoScrollStep = 0;
+const previewBuildQueue = [];
+let previewBuildQueueRunning = false;
+let progressNoticeDepth = 0;
+const previewBlobUrls = new Map();
+let imageEditsNeedsCompaction = false;
+
+function enqueuePreviewBuild(task) {
+  return new Promise((resolve, reject) => {
+    previewBuildQueue.push({ task, resolve, reject });
+    drainPreviewBuildQueue();
+  });
+}
+
+function schedulePreviewQueueDrain(callback) {
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(
+      () => {
+        callback();
+      },
+      { timeout: 700 },
+    );
+    return;
+  }
+
+  window.setTimeout(callback, 0);
+}
+
+function drainPreviewBuildQueue() {
+  if (previewBuildQueueRunning || !previewBuildQueue.length) {
+    return;
+  }
+
+  previewBuildQueueRunning = true;
+  const nextJob = previewBuildQueue.shift();
+
+  schedulePreviewQueueDrain(() => {
+    Promise.resolve()
+      .then(() => nextJob.task())
+      .then(nextJob.resolve)
+      .catch(nextJob.reject)
+      .finally(() => {
+        previewBuildQueueRunning = false;
+        drainPreviewBuildQueue();
+      });
+  });
+}
+
+const imageEditor = createImageEditorController({
+  rootEl: editorView,
+  stageEl: editorStage,
+  progressOverlayEl: editorProgressOverlay,
+  canvasEl: editorCanvas,
+  overlayEl: editorOverlay,
+  backBtn: editorBackBtn,
+  cropToggleBtn: editorCropToggleBtn,
+  removeBgBtn: editorRemoveBgBtn,
+  backgroundBtn: editorBackgroundBtn,
+  eraserBtn: editorEraserBtn,
+  applyCropBtn: editorApplyCropBtn,
+  applyBackgroundBtn: editorApplyBackgroundBtn,
+  eraserContentEl: editorEraserContent,
+  eraserSizeInput: editorEraserSizeInput,
+  eraserSizeValueEl: editorEraserSizeValue,
+  eraserOpacityInput: editorEraserOpacityInput,
+  eraserOpacityValueEl: editorEraserOpacityValue,
+  eraserUndoBtn: editorEraserUndoBtn,
+  eraserRedoBtn: editorEraserRedoBtn,
+  undoBtn: editorUndoBtn,
+  resetBtn: editorResetBtn,
+  downloadBtn: editorDownloadBtn,
+  titleEl: editorTitle,
+  dimensionsEl: editorDimensions,
+  aspectRatioSelect: editorAspectRatioSelect,
+  backgroundColorInput: editorBackgroundColorInput,
+  aspectRatioRow: editorAspectRatioRow,
+  cropContentEl: editorCropContent,
+  backgroundContentEl: editorBackgroundContent,
+  cropHintEl: editorCropHint,
+  historyInfoEl: editorHistoryInfo,
+  onBack: closeImageEditor,
+  onStatus: (message) => {
+    setStatus(message);
+    showActionToast(message);
+  },
+  onChange: handleEditorImageChange,
+});
 
 detailsToggleBtn.addEventListener("click", () => {
   if (!isSmallScreen()) {
@@ -217,22 +366,11 @@ historyGalleryExportAllBtn.addEventListener(
   "click",
   exportAllHistoryGalleryImages,
 );
-historyGalleryInlineEditBtn.addEventListener("click", toggleHistoryHeaderEdit);
-historyHeaderTitleInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    saveHistoryHeaderInlineEdit();
-  }
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeHistoryHeaderInlineEdit({ restore: true });
-  }
+historyHeaderTitleEditBtn.addEventListener("click", () => {
+  startInlineHistoryHeaderEdit("title");
 });
-historyHeaderSubtitleInput.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeHistoryHeaderInlineEdit({ restore: true });
-  }
+historyHeaderSubtitleEditBtn.addEventListener("click", () => {
+  startInlineHistoryHeaderEdit("description");
 });
 historyGalleryCopyAllCaptionsBtn.addEventListener(
   "click",
@@ -265,6 +403,8 @@ historyGalleryCopyBtn.addEventListener(
   "click",
   copyActiveHistoryGalleryShortcode,
 );
+detailEditBtn.addEventListener("click", openFinderEditor);
+historyGalleryEditBtn.addEventListener("click", openHistoryGalleryEditor);
 document.addEventListener("keydown", handleHistoryGalleryReorderHotkeys);
 
 openSettingsBtn.addEventListener("click", openSettingsPanel);
@@ -394,6 +534,77 @@ customWidth.addEventListener("input", regenerateOutputs);
 captionInput.addEventListener("input", regenerateOutputs);
 fillDefaultCaptionBtn.addEventListener("click", fillFinderDefaultCaption);
 
+resultsEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const itemEl = target.closest(".result-item");
+  if (!itemEl) {
+    return;
+  }
+
+  const pageId = Number.parseInt(itemEl.dataset.pageId || "", 10);
+  if (!Number.isInteger(pageId)) {
+    return;
+  }
+
+  if (isGalleryMode()) {
+    if (
+      target instanceof HTMLInputElement &&
+      target.classList.contains("result-select")
+    ) {
+      toggleGallerySelection(pageId, {
+        additive: true,
+        forceChecked: target.checked,
+      });
+      event.stopPropagation();
+      return;
+    }
+
+    toggleGallerySelection(pageId, {
+      additive: true,
+      forceChecked: null,
+    });
+    return;
+  }
+
+  selectImage(pageId);
+});
+
+resultsEl.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const itemEl = target.closest(".result-item");
+  if (!itemEl) {
+    return;
+  }
+
+  const pageId = Number.parseInt(itemEl.dataset.pageId || "", 10);
+  if (!Number.isInteger(pageId)) {
+    return;
+  }
+
+  event.preventDefault();
+  if (isGalleryMode()) {
+    toggleGallerySelection(pageId, {
+      additive: true,
+      forceChecked: null,
+    });
+    return;
+  }
+
+  selectImage(pageId);
+});
+
 sortSelect.addEventListener("change", () => {
   if (!currentQuery) {
     return;
@@ -464,12 +675,41 @@ downloadImageBtn.addEventListener("click", async () => {
   downloadingImage = true;
   updateDownloadButtonState();
   setStatus("Preparing optimized image download...");
+  setProgressOverlay(detailProgressOverlay, "Preparing download…");
+  const reportDownloadProgress = createThrottledProgressUpdater({
+    overlayEl: detailProgressOverlay,
+  });
 
   try {
-    const { blob, width } = await optimizeImageForDownload(
-      selectedImage.imageUrl,
-    );
-    const fileName = getImageFileName(selectedImage);
+    const finderEditKey = buildImageEditKey(selectedImage, "finder");
+    const finderEditState = getImageEditState(finderEditKey);
+    const fileName =
+      finderEditState?.fileName || getImageFileName(selectedImage);
+    let blob;
+    let width;
+
+    if (finderEditState?.previewUrl) {
+      const fastPathMessage = "Downloading edited image…";
+      setStatus(fastPathMessage);
+      setProgressOverlay(detailProgressOverlay, fastPathMessage);
+      const editedResponse = await fetch(finderEditState.previewUrl);
+      if (!editedResponse.ok) {
+        throw new Error(
+          `Edited image fetch failed with status ${editedResponse.status}`,
+        );
+      }
+      blob = await editedResponse.blob();
+      width = "edited";
+    } else {
+      const optimized = await optimizeImageForDownload(selectedImage.imageUrl, {
+        onProgress: (message) => {
+          reportDownloadProgress(message);
+        },
+      });
+      blob = optimized.blob;
+      width = optimized.width;
+    }
+
     const savedToFolder = await exportBlob(blob, fileName);
     const kb = Math.round(blob.size / 1024);
     saveToHistory({
@@ -482,14 +722,15 @@ downloadImageBtn.addEventListener("click", async () => {
       downloaded: true,
     });
     const message = savedToFolder
-      ? `Saved ${fileName} to ${exportDirectoryName} (${width}px, ${kb}KB).`
-      : `Downloaded ${fileName} (${width}px, ${kb}KB).`;
+      ? `Saved ${fileName} to ${exportDirectoryName} (${width === "edited" ? "edited" : `${width}px`}, ${kb}KB).`
+      : `Downloaded ${fileName} (${width === "edited" ? "edited" : `${width}px`}, ${kb}KB).`;
     showActionToast(message);
     setStatus(message);
   } catch (error) {
     console.error(error);
     setStatus("Download failed. Try another image.");
   } finally {
+    clearProgressOverlay(detailProgressOverlay);
     downloadingImage = false;
     updateDownloadButtonState();
   }
@@ -513,7 +754,7 @@ function buildSearchUrl(query, continueData = null) {
     iiextmetadatafilter:
       "Artist|LicenseShortName|LicenseUrl|ImageDescription|Credit|Date|DateTime|DateTimeOriginal|DateTimeDigitized",
     inprop: "url",
-    iiurlwidth: "320",
+    iiurlwidth: String(PREVIEW_THUMB_WIDTH),
   });
 
   if (apiSort) {
@@ -825,6 +1066,7 @@ function setSearchStatus() {
 function renderResults(items, options = {}) {
   const { append = false } = options;
   const galleryMode = isGalleryMode();
+  const fragment = document.createDocumentFragment();
 
   if (!append) {
     resultsEl.innerHTML = "";
@@ -834,13 +1076,14 @@ function renderResults(items, options = {}) {
     const li = document.createElement("li");
     li.className = "result-item";
     li.tabIndex = 0;
+    li.dataset.pageId = String(item.pageId || "");
 
     if (galleryMode) {
       li.innerHTML = `
         <div class="result-head">
           <input class="result-select" type="checkbox" ${selectedGalleryItems.has(item.pageId) ? "checked" : ""} />
         </div>
-        <img src="${escapeAttribute(item.thumbnailUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" />
+        <img src="${escapeAttribute(item.thumbnailUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" decoding="async" fetchpriority="low" />
         <div class="result-text">
           <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.licenseShort)}</p>
@@ -849,7 +1092,7 @@ function renderResults(items, options = {}) {
       li.classList.toggle("active", selectedGalleryItems.has(item.pageId));
     } else {
       li.innerHTML = `
-        <img src="${escapeAttribute(item.thumbnailUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" />
+        <img src="${escapeAttribute(item.thumbnailUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" decoding="async" fetchpriority="low" />
         <div class="result-text">
           <h3>${escapeHtml(item.title)}</h3>
           <p>${escapeHtml(item.licenseShort)}</p>
@@ -857,46 +1100,10 @@ function renderResults(items, options = {}) {
       `;
     }
 
-    li.addEventListener("click", (event) => {
-      if (galleryMode) {
-        if (
-          event.target instanceof HTMLInputElement &&
-          event.target.classList.contains("result-select")
-        ) {
-          toggleGallerySelection(item.pageId, {
-            additive: true,
-            forceChecked: event.target.checked,
-          });
-          event.stopPropagation();
-          return;
-        }
-
-        toggleGallerySelection(item.pageId, {
-          additive: true,
-          forceChecked: null,
-        });
-        return;
-      }
-
-      selectImage(item.pageId);
-    });
-
-    li.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        if (galleryMode) {
-          toggleGallerySelection(item.pageId, {
-            additive: true,
-            forceChecked: null,
-          });
-          return;
-        }
-        selectImage(item.pageId);
-      }
-    });
-
-    resultsEl.appendChild(li);
+    fragment.appendChild(li);
   });
+
+  resultsEl.appendChild(fragment);
 }
 
 function selectImage(pageId) {
@@ -912,17 +1119,41 @@ function selectImage(pageId) {
     node.classList.toggle("active", currentResults[index]?.pageId === pageId);
   });
 
-  detailPreview.src = selectedImage.imageUrl;
+  detailPreview.src = getDisplayImageUrl(selectedImage, "finder");
   detailTitle.textContent = selectedImage.title;
   detailAuthor.textContent = selectedImage.author;
   detailLicense.textContent = selectedImage.licenseShort;
   detailDescription.textContent = selectedImage.description;
 
-  detailImageUrl.href = selectedImage.imageUrl;
-  detailImageUrl.textContent = selectedImage.imageUrl;
+  detailImageUrl.href =
+    selectedImage.imageUrl || selectedImage.thumbnailUrl || "";
+  detailImageUrl.textContent =
+    selectedImage.imageUrl || selectedImage.thumbnailUrl || "";
 
   detailFilePage.href = selectedImage.pageUrl;
   detailFilePage.textContent = selectedImage.pageUrl;
+
+  const selectedFinderKey = buildImageEditKey(selectedImage, "finder");
+  ensurePreviewForImage(
+    selectedImage,
+    "finder",
+    (previewUrl) => {
+      if (!selectedImage) {
+        return;
+      }
+
+      if (buildImageEditKey(selectedImage, "finder") !== selectedFinderKey) {
+        return;
+      }
+
+      detailPreview.src = previewUrl;
+      detailImageUrl.href =
+        selectedImage.imageUrl || selectedImage.thumbnailUrl || "";
+      detailImageUrl.textContent =
+        selectedImage.imageUrl || selectedImage.thumbnailUrl || "";
+    },
+    { allowForegroundRebuild: true },
+  );
 
   showDetails();
   if (isSmallScreen()) {
@@ -1070,6 +1301,565 @@ function showDetails() {
   detailsEl.classList.remove("hidden");
 }
 
+function buildImageEditKey(image, context = "finder") {
+  const contextPrefix = context || "finder";
+  if (Number.isInteger(image?.pageId)) {
+    return `${contextPrefix}:page:${image.pageId}`;
+  }
+
+  if (typeof image?.imageUrl === "string" && image.imageUrl.trim()) {
+    return `${contextPrefix}:url:${image.imageUrl.trim()}`;
+  }
+
+  const fallback =
+    image?.fileName || image?.title || image?.thumbnailUrl || "unknown-image";
+  return `${contextPrefix}:fallback:${fallback}`;
+}
+
+function getImageEditState(key) {
+  if (!key) {
+    return null;
+  }
+
+  const inMemory = imageEditState.get(key) || null;
+  if (inMemory) {
+    return inMemory;
+  }
+
+  const persisted = persistedImageEdits[key];
+  if (
+    !persisted ||
+    (!Array.isArray(persisted.history) && !Array.isArray(persisted.operations))
+  ) {
+    return null;
+  }
+
+  const operations = normalizeEditOperations(
+    Array.isArray(persisted.operations)
+      ? persisted.operations
+      : Array.isArray(persisted.history)
+        ? persisted.history.map((step) => ({ type: "crop", ...step }))
+        : [],
+  );
+
+  const hydrated = {
+    previewUrl: "",
+    fileName: persisted.fileName || "",
+    history: Array.isArray(persisted.history) ? persisted.history : [],
+    operations,
+    previewOptimized: persisted.previewOptimized !== false,
+    previewCacheChecked: false,
+  };
+  imageEditState.set(key, hydrated);
+  return hydrated;
+}
+
+function isObjectUrl(url) {
+  return typeof url === "string" && url.startsWith("blob:");
+}
+
+function getDisplayImageUrl(image, context = "finder") {
+  const key = buildImageEditKey(image, context);
+  const edit = getImageEditState(key);
+  if (edit?.previewUrl) {
+    return edit.previewUrl;
+  }
+
+  return image?.thumbnailUrl || image?.imageUrl || "";
+}
+
+function normalizeOperationsFromEdit(edit) {
+  if (!edit) {
+    return [];
+  }
+
+  if (Array.isArray(edit.operations) && edit.operations.length > 0) {
+    return normalizeEditOperations(edit.operations);
+  }
+
+  if (Array.isArray(edit.history) && edit.history.length > 0) {
+    return normalizeEditOperations(
+      edit.history.map((step) => ({ type: "crop", ...step })),
+    );
+  }
+
+  return [];
+}
+
+function hasCutoutOperation(operations) {
+  return Array.isArray(operations)
+    ? operations.some((step) => step?.type === "cutout")
+    : false;
+}
+
+function hasCropOperation(operations) {
+  return Array.isArray(operations)
+    ? operations.some((step) => step?.type === "crop")
+    : false;
+}
+
+async function buildPreviewUrlFromHistory(imageUrl, historyOrOperations) {
+  return buildEditedPreviewUrlFromImageUrl(
+    imageUrl,
+    normalizeEditOperations(historyOrOperations),
+  );
+}
+
+function ensurePreviewForImage(image, context, onReady, options = {}) {
+  const allowForegroundRebuild = options?.allowForegroundRebuild === true;
+  const key = buildImageEditKey(image, context);
+  const edit = getImageEditState(key);
+  const operations = normalizeOperationsFromEdit(edit);
+  const includesCutout = hasCutoutOperation(operations);
+  const includesCrop = hasCropOperation(operations);
+
+  if (!key || !edit || !operations.length) {
+    return;
+  }
+
+  if (
+    !edit.previewUrl &&
+    !edit.previewCacheChecked &&
+    !edit.previewCachePromise
+  ) {
+    edit.previewCachePromise = loadPreviewBlobFromCache(key)
+      .then((cachedBlob) => {
+        if (!(cachedBlob instanceof Blob)) {
+          return "";
+        }
+
+        const nextUrl = cachePreviewObjectUrl(key, cachedBlob);
+        edit.previewUrl = nextUrl;
+        return nextUrl;
+      })
+      .catch(() => "")
+      .finally(() => {
+        edit.previewCacheChecked = true;
+        delete edit.previewCachePromise;
+      });
+  }
+
+  if (edit.previewUrl) {
+    if (typeof onReady === "function") {
+      onReady(edit.previewUrl);
+    }
+    return;
+  }
+
+  if (edit.previewCachePromise) {
+    if (typeof onReady === "function") {
+      edit.previewCachePromise.then((url) => {
+        if (url) {
+          onReady(url);
+        }
+      });
+    }
+    return;
+  }
+
+  if (edit.previewPromise) {
+    if (typeof onReady === "function") {
+      edit.previewPromise.then((url) => {
+        if (url) {
+          onReady(url);
+        }
+      });
+    }
+    return;
+  }
+
+  if (!allowForegroundRebuild) {
+    return;
+  }
+
+  if (includesCutout && !edit.previewUrl && !edit.previewCacheChecked) {
+    return;
+  }
+
+  const sourceUrl =
+    includesCrop || includesCutout
+      ? image?.imageUrl || image?.thumbnailUrl || ""
+      : image?.thumbnailUrl || image?.imageUrl || "";
+  if (!sourceUrl) {
+    return;
+  }
+
+  edit.previewPromise = enqueuePreviewBuild(() =>
+    buildPreviewUrlFromHistory(sourceUrl, operations),
+  )
+    .then((url) => {
+      const previousPreviewUrl = edit.previewUrl;
+      edit.previewUrl = url;
+
+      if (isObjectUrl(previousPreviewUrl) && previousPreviewUrl !== url) {
+        URL.revokeObjectURL(previousPreviewUrl);
+      }
+
+      void fetch(url)
+        .then((response) => response.blob())
+        .then((blob) => savePreviewBlobToCache(key, blob))
+        .catch(() => {});
+
+      if (typeof onReady === "function") {
+        onReady(url);
+      }
+      return url;
+    })
+    .catch((error) => {
+      console.error(error);
+      return "";
+    })
+    .finally(() => {
+      delete edit.previewPromise;
+    });
+}
+
+async function resolveDownloadSourceUrlForImage(image, context = "finder") {
+  const key = buildImageEditKey(image, context);
+  const edit = getImageEditState(key);
+  const operations = normalizeOperationsFromEdit(edit);
+
+  if (
+    typeof edit?.previewUrl === "string" &&
+    edit.previewUrl &&
+    !edit.previewOptimized
+  ) {
+    return {
+      sourceUrl: edit.previewUrl,
+      isEdited: true,
+    };
+  }
+
+  if (!edit || !operations.length) {
+    return {
+      sourceUrl: image?.imageUrl || image?.thumbnailUrl || "",
+      isEdited: false,
+    };
+  }
+
+  const sourceUrl = image?.imageUrl || image?.thumbnailUrl || "";
+  if (!sourceUrl) {
+    return {
+      sourceUrl: "",
+      isEdited: false,
+    };
+  }
+
+  try {
+    const previewUrl = await buildPreviewUrlFromHistory(sourceUrl, operations);
+    edit.previewUrl = previewUrl;
+    return {
+      sourceUrl: previewUrl,
+      isEdited: true,
+    };
+  } catch (error) {
+    console.error(error);
+    return {
+      sourceUrl,
+      isEdited: false,
+    };
+  }
+}
+
+function applyEditedPreviewToCurrentUi({ key, previewUrl, originalImageUrl }) {
+  if (!key) {
+    return;
+  }
+
+  const finderKey = selectedImage
+    ? buildImageEditKey(selectedImage, "finder")
+    : "";
+  if (finderKey && finderKey === key) {
+    const nextUrl =
+      previewUrl ||
+      selectedImage.thumbnailUrl ||
+      originalImageUrl ||
+      selectedImage.imageUrl;
+    detailPreview.src = nextUrl;
+    const sourceUrl =
+      selectedImage.imageUrl ||
+      selectedImage.thumbnailUrl ||
+      originalImageUrl ||
+      "";
+    detailImageUrl.href = sourceUrl;
+    detailImageUrl.textContent = sourceUrl;
+  }
+
+  const galleryContext = getActiveHistoryGalleryContext();
+  if (galleryContext?.item) {
+    const galleryKey = buildImageEditKey(
+      galleryContext.item,
+      `gallery:${galleryContext.entry.id}`,
+    );
+    if (galleryKey === key) {
+      historyGalleryPreview.src =
+        previewUrl || originalImageUrl || galleryContext.item.imageUrl || "";
+    }
+  }
+
+  if (activeViewName === "history") {
+    const singleCards = historySingleList.querySelectorAll(
+      ".history-item[data-single-edit-key]",
+    );
+    singleCards.forEach((card) => {
+      if (card.dataset.singleEditKey !== key) {
+        return;
+      }
+
+      const previewImage = card.querySelector("img");
+      if (previewImage) {
+        previewImage.src = previewUrl || originalImageUrl || previewImage.src;
+      }
+    });
+  }
+}
+
+function handleEditorImageChange(payload) {
+  const key = payload?.editKey;
+  if (!key) {
+    return;
+  }
+
+  const previousState = getImageEditState(key);
+  if (
+    isObjectUrl(previousState?.previewUrl) &&
+    previousState.previewUrl !== payload.previewUrl
+  ) {
+    URL.revokeObjectURL(previousState.previewUrl);
+  }
+
+  const nextHistory = Array.isArray(payload.history) ? payload.history : [];
+  const nextOperations = Array.isArray(payload.operations)
+    ? payload.operations
+    : nextHistory.map((step) => ({ type: "crop", ...step }));
+
+  if (!payload.previewUrl) {
+    imageEditState.delete(key);
+    void deletePreviewBlobFromCache(key);
+    delete persistedImageEdits[key];
+    saveImageEdits();
+    applyEditedPreviewToCurrentUi({
+      key,
+      previewUrl: "",
+      originalImageUrl: payload.originalImageUrl || "",
+    });
+    return;
+  }
+
+  imageEditState.set(key, {
+    previewUrl: payload.previewUrl,
+    fileName: payload.fileName,
+    history: nextHistory,
+    operations: nextOperations,
+    previewOptimized: payload.previewOptimized !== false,
+    previewCacheChecked: true,
+  });
+
+  void fetch(payload.previewUrl)
+    .then((response) => response.blob())
+    .then((blob) => savePreviewBlobToCache(key, blob))
+    .catch(() => {});
+
+  if (nextOperations.length > 0) {
+    persistedImageEdits[key] = {
+      fileName: payload.fileName,
+      history: nextHistory,
+      operations: nextOperations,
+      previewOptimized: payload.previewOptimized !== false,
+      updatedAt: Date.now(),
+    };
+  } else {
+    delete persistedImageEdits[key];
+  }
+  saveImageEdits();
+
+  applyEditedPreviewToCurrentUi({
+    key,
+    previewUrl: payload.previewUrl,
+    originalImageUrl: payload.originalImageUrl || "",
+  });
+}
+
+function enterEditorMode() {
+  document.body.classList.add("editor-active");
+}
+
+function leaveEditorMode() {
+  document.body.classList.remove("editor-active");
+}
+
+function buildShortStableId(value = "") {
+  const input = String(value || "");
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36).slice(0, 5) || "0";
+}
+
+function getEditorRouteId(meta = {}) {
+  const rawLabel =
+    meta.fileName ||
+    meta.title ||
+    (typeof meta.imageUrl === "string"
+      ? decodeURIComponent(meta.imageUrl.split("/").pop() || "")
+      : "") ||
+    "image";
+
+  const labelSlug =
+    slugifyFileName(removeCommonImageExtension(rawLabel)).slice(0, 48) ||
+    "image";
+
+  const identitySeed =
+    meta.editKey || meta.imageUrl || meta.fileName || meta.title || rawLabel;
+  const suffix = buildShortStableId(identitySeed);
+
+  return `${labelSlug}-${suffix}`;
+}
+
+function rememberEditorRequest(meta = {}) {
+  const routeId = getEditorRouteId(meta);
+  const normalized = {
+    ...meta,
+    routeId,
+  };
+  editorRouteRequests.set(routeId, normalized);
+  lastEditorOpenRequest = normalized;
+  return normalized;
+}
+
+function getEditorRequestForRoute(routeId) {
+  if (!routeId) {
+    return lastEditorOpenRequest;
+  }
+
+  return editorRouteRequests.get(routeId) || lastEditorOpenRequest;
+}
+
+async function openImageEditor(meta, { syncHash = true } = {}) {
+  if (!meta?.imageUrl) {
+    setStatus("No image available for editing.");
+    return;
+  }
+
+  const request = rememberEditorRequest(meta);
+  activeEditorRouteId = request.routeId;
+
+  editorSettingsWasOpen = !settingsPanel.classList.contains("hidden");
+  closeSettingsPanel({ syncHash: false });
+  enterEditorMode();
+
+  try {
+    await imageEditor.open(request);
+    setStatus("Editor ready.");
+    if (syncHash) {
+      syncHashWithUi();
+    }
+  } catch {
+    activeEditorRouteId = null;
+    leaveEditorMode();
+    setStatus("Could not open this image in the editor.");
+  }
+}
+
+function closeImageEditor({ restoreSettings = true, syncHash = true } = {}) {
+  imageEditor.close();
+  leaveEditorMode();
+  activeEditorRouteId = null;
+
+  if (restoreSettings && editorSettingsWasOpen) {
+    openSettingsPanel({ syncHash: false });
+  }
+  editorSettingsWasOpen = false;
+
+  if (syncHash) {
+    syncHashWithUi();
+  }
+}
+
+function openFinderEditor() {
+  if (!selectedImage) {
+    setStatus("Select an image first.");
+    return;
+  }
+
+  const editKey = buildImageEditKey(selectedImage, "finder");
+  const existingEdit = getImageEditState(editKey);
+
+  void openImageEditor({
+    imageUrl: selectedImage.imageUrl,
+    startImageUrl: existingEdit?.previewUrl || selectedImage.imageUrl,
+    title: selectedImage.title,
+    fileName: getImageFileName(selectedImage),
+    editKey,
+    history: Array.isArray(existingEdit?.history) ? existingEdit.history : [],
+    operations: Array.isArray(existingEdit?.operations)
+      ? existingEdit.operations
+      : [],
+  });
+}
+
+function openHistoryGalleryEditor() {
+  const context = getActiveHistoryGalleryContext();
+  if (!context?.item) {
+    setStatus("Select a gallery image first.");
+    return;
+  }
+
+  const item = context.item;
+  const editKey = buildImageEditKey(item, `gallery:${context.entry.id}`);
+  const existingEdit = getImageEditState(editKey);
+
+  void openImageEditor({
+    imageUrl: item.imageUrl || item.thumbnailUrl,
+    startImageUrl:
+      existingEdit?.previewUrl || item.imageUrl || item.thumbnailUrl,
+    title: item.title || "Gallery image",
+    fileName: getImageFileName(item),
+    editKey,
+    history: Array.isArray(existingEdit?.history) ? existingEdit.history : [],
+    operations: Array.isArray(existingEdit?.operations)
+      ? existingEdit.operations
+      : [],
+  });
+}
+
+function openSingleVaultEditor(entryId) {
+  const entry = historyEntries.find((item) => item.id === entryId);
+  if (!entry || entry.type === "gallery") {
+    setStatus("Select a single asset first.");
+    return;
+  }
+
+  const imageUrl = entry.imageUrl || entry.thumbnailUrl;
+  if (!imageUrl) {
+    setStatus("No image available for editing.");
+    return;
+  }
+
+  const editSource = {
+    pageId: entry.pageId,
+    imageUrl: entry.imageUrl,
+    thumbnailUrl: entry.thumbnailUrl,
+    fileName: entry.fileName,
+    title: entry.title,
+  };
+  const editKey = buildImageEditKey(editSource, "finder");
+  const existingEdit = getImageEditState(editKey);
+
+  void openImageEditor({
+    imageUrl,
+    startImageUrl: existingEdit?.previewUrl || imageUrl,
+    title: entry.title || "Vault image",
+    fileName: entry.fileName || getImageFileName(entry),
+    editKey,
+    history: Array.isArray(existingEdit?.history) ? existingEdit.history : [],
+    operations: Array.isArray(existingEdit?.operations)
+      ? existingEdit.operations
+      : [],
+  });
+}
+
 function setStatus(message) {
   statusEl.textContent = message;
 }
@@ -1138,48 +1928,113 @@ function resetHistoryHeaderDefaultText() {
     "Saved assets and shortcodes for quick reuse.";
 }
 
-function openHistoryHeaderInlineEdit() {
+function selectAllContent(el) {
+  const selection = window.getSelection();
+  if (!selection) {
+    return;
+  }
+
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function clearHistoryHeaderEditableState(el) {
+  if (!el) {
+    return;
+  }
+
+  el.removeAttribute("contenteditable");
+  el.removeAttribute("data-inline-editing");
+}
+
+function commitInlineHistoryHeaderEdit(field) {
   const entry = getActiveHistoryGalleryEntry();
-  if (!entry) {
+  if (!entry || entry.type !== "gallery") {
+    clearHistoryHeaderEditableState(historyHeaderTitle);
+    clearHistoryHeaderEditableState(historyHeaderSubtitle);
+    return;
+  }
+
+  if (field === "title") {
+    const editedTitle = (historyHeaderTitle.textContent || "").trim();
+    const nextTitle = editedTitle || entry.title || "Gallery";
+    updateHistoryEntryFields(entry.id, {
+      galleryTitle: editedTitle,
+      title: nextTitle,
+    });
+    const refreshed = getActiveHistoryGalleryEntry();
+    if (refreshed) {
+      applyHistoryGalleryHeaderText(refreshed);
+    }
+    clearHistoryHeaderEditableState(historyHeaderTitle);
+    setStatus("Gallery title updated.");
+    return;
+  }
+
+  const editedDescription = (historyHeaderSubtitle.textContent || "").trim();
+  updateHistoryEntryFields(entry.id, {
+    galleryDescription: editedDescription,
+  });
+  const refreshed = getActiveHistoryGalleryEntry();
+  if (refreshed) {
+    applyHistoryGalleryHeaderText(refreshed);
+  }
+  clearHistoryHeaderEditableState(historyHeaderSubtitle);
+  setStatus("Gallery description updated.");
+}
+
+function startInlineHistoryHeaderEdit(field) {
+  const entry = getActiveHistoryGalleryEntry();
+  if (!entry || entry.type !== "gallery") {
     setStatus("Open a gallery first.");
     return;
   }
 
-  isHistoryHeaderEditing = true;
-  historyHeaderOriginalTitle = entry.galleryTitle || entry.title || "";
-  historyHeaderOriginalDescription = getHistoryGalleryDescriptionText(entry);
-  historyHeaderTitleInput.value = historyHeaderOriginalTitle;
-  historyHeaderSubtitleInput.value = historyHeaderOriginalDescription;
+  const targetEl =
+    field === "title" ? historyHeaderTitle : historyHeaderSubtitle;
+  const initialValue =
+    field === "title"
+      ? entry.galleryTitle || entry.title || "Gallery"
+      : getHistoryGalleryDescriptionText(entry);
 
-  historyHeaderTitle.classList.add("hidden");
-  historyHeaderSubtitle.classList.add("hidden");
-  historyHeaderTitleInput.classList.remove("hidden");
-  historyHeaderSubtitleInput.classList.remove("hidden");
-  setButtonIconLabel(
-    historyGalleryInlineEditBtn,
-    "fa-solid fa-floppy-disk",
-    "Save",
-  );
-  historyHeaderTitleInput.focus();
-  historyHeaderTitleInput.select();
-}
+  targetEl.textContent = initialValue;
+  targetEl.setAttribute("contenteditable", "true");
+  targetEl.dataset.inlineEditing = field;
+  targetEl.focus();
+  selectAllContent(targetEl);
 
-function closeHistoryHeaderInlineEdit({ restore = false } = {}) {
-  if (restore) {
-    historyHeaderTitleInput.value = historyHeaderOriginalTitle;
-    historyHeaderSubtitleInput.value = historyHeaderOriginalDescription;
-  }
+  const onBlur = () => {
+    targetEl.removeEventListener("blur", onBlur);
+    targetEl.removeEventListener("keydown", onKeyDown);
+    commitInlineHistoryHeaderEdit(field);
+  };
 
-  isHistoryHeaderEditing = false;
-  historyHeaderTitleInput.classList.add("hidden");
-  historyHeaderSubtitleInput.classList.add("hidden");
-  historyHeaderTitle.classList.remove("hidden");
-  historyHeaderSubtitle.classList.remove("hidden");
-  setButtonIconLabel(
-    historyGalleryInlineEditBtn,
-    "fa-solid fa-pen-to-square",
-    "Edit",
-  );
+  const onKeyDown = (event) => {
+    if (event.key === "Enter" && field === "title") {
+      event.preventDefault();
+      targetEl.blur();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      targetEl.removeEventListener("blur", onBlur);
+      targetEl.removeEventListener("keydown", onKeyDown);
+      clearHistoryHeaderEditableState(targetEl);
+      applyHistoryGalleryHeaderText(entry);
+      return;
+    }
+
+    if (event.key === "Enter" && field === "description" && !event.shiftKey) {
+      event.preventDefault();
+      targetEl.blur();
+    }
+  };
+
+  targetEl.addEventListener("blur", onBlur);
+  targetEl.addEventListener("keydown", onKeyDown);
 }
 
 function updateHistoryGalleryExportAllButtonLabel() {
@@ -1203,45 +2058,6 @@ function updateHistoryGalleryExportAllButtonLabel() {
   );
 }
 
-function saveHistoryHeaderInlineEdit() {
-  const entry = getActiveHistoryGalleryEntry();
-  if (!entry) {
-    setStatus("Gallery not found.");
-    closeHistoryHeaderInlineEdit({ restore: true });
-    return;
-  }
-
-  const galleryTitle = (historyHeaderTitleInput.value || "").trim();
-  const galleryDescription = (historyHeaderSubtitleInput.value || "").trim();
-  const nextTitle = galleryTitle || entry.title || "Gallery";
-
-  updateHistoryEntryFields(entry.id, {
-    galleryTitle,
-    galleryDescription,
-    title: nextTitle,
-  });
-
-  closeHistoryHeaderInlineEdit();
-  const refreshed = getActiveHistoryGalleryEntry();
-  if (refreshed) {
-    applyHistoryGalleryHeaderText(refreshed);
-  }
-  setStatus("Gallery details updated.");
-}
-
-function toggleHistoryHeaderEdit() {
-  if (!activeHistoryGalleryId) {
-    return;
-  }
-
-  if (isHistoryHeaderEditing) {
-    saveHistoryHeaderInlineEdit();
-    return;
-  }
-
-  openHistoryHeaderInlineEdit();
-}
-
 function normalizeRouteView(value) {
   return value === ROUTE_VAULT || value === "history" ? "history" : "finder";
 }
@@ -1253,6 +2069,8 @@ function parseHashRoute() {
       viewName: "finder",
       galleryId: null,
       settingsOpen: false,
+      editorOpen: false,
+      editorId: null,
     };
   }
 
@@ -1266,6 +2084,8 @@ function parseHashRoute() {
   const viewName = normalizeRouteView(firstSegment);
   const query = new URLSearchParams(rawQuery);
   const settingsOpen = query.get("settings") === "1";
+  const editorOpen = query.get("editor") === "1";
+  const editorId = query.get("editorId") || null;
 
   let galleryId = null;
   if (
@@ -1285,10 +2105,18 @@ function parseHashRoute() {
     viewName,
     galleryId,
     settingsOpen,
+    editorOpen,
+    editorId,
   };
 }
 
-function buildHashRoute({ viewName, galleryId, settingsOpen }) {
+function buildHashRoute({
+  viewName,
+  galleryId,
+  settingsOpen,
+  editorOpen,
+  editorId,
+}) {
   const routeView = viewName === "history" ? ROUTE_VAULT : ROUTE_FINDER;
   let hashPath = routeView;
 
@@ -1296,8 +2124,20 @@ function buildHashRoute({ viewName, galleryId, settingsOpen }) {
     hashPath += `/gallery/${encodeURIComponent(galleryId)}`;
   }
 
+  const query = new URLSearchParams();
   if (settingsOpen) {
-    hashPath += "?settings=1";
+    query.set("settings", "1");
+  }
+  if (editorOpen) {
+    query.set("editor", "1");
+    if (editorId) {
+      query.set("editorId", editorId);
+    }
+  }
+
+  const queryText = query.toString();
+  if (queryText) {
+    hashPath += `?${queryText}`;
   }
 
   return `#${hashPath}`;
@@ -1312,6 +2152,8 @@ function syncHashWithUi({ replace = false } = {}) {
     viewName: activeViewName,
     galleryId: activeViewName === "history" ? activeHistoryGalleryId : null,
     settingsOpen: !settingsPanel.classList.contains("hidden"),
+    editorOpen: imageEditor.isOpen(),
+    editorId: activeEditorRouteId,
   });
 
   if (window.location.hash === nextHash) {
@@ -1350,6 +2192,28 @@ function applyRouteFromHash() {
       openSettingsPanel({ syncHash: false });
     } else {
       closeSettingsPanel({ syncHash: false });
+    }
+
+    if (route.editorOpen) {
+      const request = getEditorRequestForRoute(route.editorId);
+      const isSameEditorRoute =
+        imageEditor.isOpen() &&
+        activeEditorRouteId &&
+        route.editorId &&
+        activeEditorRouteId === route.editorId;
+
+      if (!isSameEditorRoute) {
+        if (imageEditor.isOpen()) {
+          closeImageEditor({ restoreSettings: false, syncHash: false });
+        }
+
+        if (request?.imageUrl) {
+          activeEditorRouteId = request.routeId;
+          void openImageEditor(request, { syncHash: false });
+        }
+      }
+    } else if (imageEditor.isOpen()) {
+      closeImageEditor({ restoreSettings: false, syncHash: false });
     }
   } finally {
     isApplyingHashRoute = false;
@@ -1405,6 +2269,178 @@ function updateTopTabIndicators() {
   );
   const settingsOpen = !settingsPanel.classList.contains("hidden");
   openSettingsBtn.classList.toggle("active-tab", settingsOpen);
+}
+
+function setProgressOverlay(overlayEl, message) {
+  if (!(overlayEl instanceof HTMLElement)) {
+    return;
+  }
+
+  const label =
+    typeof message === "string" && message.trim()
+      ? message.trim()
+      : "Processing…";
+
+  const textNode = overlayEl.querySelector("span");
+  if (textNode) {
+    textNode.textContent = label;
+  }
+
+  overlayEl.classList.remove("hidden");
+}
+
+function clearProgressOverlay(overlayEl) {
+  if (!(overlayEl instanceof HTMLElement)) {
+    return;
+  }
+
+  overlayEl.classList.add("hidden");
+}
+
+function createThrottledProgressUpdater({
+  overlayEl = null,
+  minIntervalMs = 180,
+} = {}) {
+  let lastAt = 0;
+
+  return (message) => {
+    if (!message) {
+      return;
+    }
+
+    const now = performance.now();
+    if (now - lastAt < minIntervalMs) {
+      return;
+    }
+
+    lastAt = now;
+    setStatus(message);
+    if (overlayEl) {
+      setProgressOverlay(overlayEl, message);
+    }
+  };
+}
+
+function showProgressNotice(message) {
+  if (!(progressNotice instanceof HTMLElement)) {
+    return;
+  }
+
+  progressNoticeDepth += 1;
+  progressNotice.textContent =
+    typeof message === "string" && message.trim()
+      ? message.trim()
+      : "Processing…";
+  progressNotice.classList.remove("hidden");
+}
+
+function updateProgressNotice(message) {
+  if (!(progressNotice instanceof HTMLElement) || progressNoticeDepth <= 0) {
+    return;
+  }
+
+  if (typeof message === "string" && message.trim()) {
+    progressNotice.textContent = message.trim();
+  }
+}
+
+function hideProgressNotice() {
+  if (!(progressNotice instanceof HTMLElement)) {
+    return;
+  }
+
+  progressNoticeDepth = Math.max(0, progressNoticeDepth - 1);
+  if (progressNoticeDepth > 0) {
+    return;
+  }
+
+  progressNotice.classList.add("hidden");
+  progressNotice.textContent = "";
+}
+
+function cachePreviewObjectUrl(key, blob) {
+  if (!key || !(blob instanceof Blob)) {
+    return "";
+  }
+
+  const previous = previewBlobUrls.get(key);
+  if (previous) {
+    URL.revokeObjectURL(previous);
+  }
+
+  const nextUrl = URL.createObjectURL(blob);
+  previewBlobUrls.set(key, nextUrl);
+  return nextUrl;
+}
+
+async function savePreviewBlobToCache(key, blob) {
+  if (!key || !(blob instanceof Blob)) {
+    return;
+  }
+
+  try {
+    const db = await openDirectoryDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PREVIEW_CACHE_STORE_NAME, "readwrite");
+      tx.objectStore(PREVIEW_CACHE_STORE_NAME).put(
+        {
+          blob,
+          updatedAt: Date.now(),
+        },
+        key,
+      );
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function loadPreviewBlobFromCache(key) {
+  if (!key) {
+    return null;
+  }
+
+  try {
+    const db = await openDirectoryDb();
+    const value = await new Promise((resolve, reject) => {
+      const tx = db.transaction(PREVIEW_CACHE_STORE_NAME, "readonly");
+      const req = tx.objectStore(PREVIEW_CACHE_STORE_NAME).get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return value?.blob instanceof Blob ? value.blob : null;
+  } catch {
+    return null;
+  }
+}
+
+async function deletePreviewBlobFromCache(key) {
+  if (!key) {
+    return;
+  }
+
+  const existingUrl = previewBlobUrls.get(key);
+  if (existingUrl) {
+    URL.revokeObjectURL(existingUrl);
+    previewBlobUrls.delete(key);
+  }
+
+  try {
+    const db = await openDirectoryDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PREVIEW_CACHE_STORE_NAME, "readwrite");
+      tx.objectStore(PREVIEW_CACHE_STORE_NAME).delete(key);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (error) {
+    console.error(error);
+  }
 }
 
 function showActionToast(message) {
@@ -1577,13 +2613,30 @@ function toggleGallerySelection(pageId, options = {}) {
 
   showDetails();
   updateGallerySelectionList();
-  renderResults(currentResults, { append: false });
+  syncGalleryResultSelectionUi();
 
   if (isSmallScreen()) {
     setMobileDetailsCollapsed(false);
   }
 
   scheduleGalleryAutoSave();
+}
+
+function syncGalleryResultSelectionUi() {
+  const resultItems = resultsEl.querySelectorAll(".result-item");
+  resultItems.forEach((itemEl) => {
+    const pageId = Number.parseInt(itemEl.dataset.pageId || "", 10);
+    if (!Number.isInteger(pageId)) {
+      return;
+    }
+
+    const isSelected = selectedGalleryItems.has(pageId);
+    itemEl.classList.toggle("active", isSelected);
+    const checkbox = itemEl.querySelector(".result-select");
+    if (checkbox instanceof HTMLInputElement) {
+      checkbox.checked = isSelected;
+    }
+  });
 }
 
 function updateGallerySelectionList() {
@@ -1614,7 +2667,7 @@ function updateGallerySelectionList() {
     removeBtn.addEventListener("click", () => {
       selectedGalleryItems.delete(item.pageId);
       updateGallerySelectionList();
-      renderResults(currentResults, { append: false });
+      syncGalleryResultSelectionUi();
       scheduleGalleryAutoSave();
     });
 
@@ -1704,7 +2757,7 @@ function finishCurrentGallery() {
   galleryDescriptionInput.value = "";
 
   updateGallerySelectionList();
-  renderResults(currentResults, { append: false });
+  syncGalleryResultSelectionUi();
   showDetails();
 
   if (savedEntryId) {
@@ -1846,9 +2899,9 @@ function renderHistory() {
     "history-header--gallery",
     Boolean(activeHistoryGalleryId),
   );
-  historyHeaderSubtitle.classList.remove("hidden");
   historyGalleryHeaderBar.classList.toggle("hidden", !activeHistoryGalleryId);
-  historyGalleryInlineEditBtn.classList.toggle(
+  historyHeaderTitleEditBtn.classList.toggle("hidden", !activeHistoryGalleryId);
+  historyHeaderSubtitleEditBtn.classList.toggle(
     "hidden",
     !activeHistoryGalleryId,
   );
@@ -1862,17 +2915,47 @@ function renderHistory() {
     item.className = "history-item";
     if (isGalleryEntry) {
       item.classList.add("history-gallery-entry");
+    } else {
+      item.dataset.singleEditKey = buildImageEditKey(entry, "finder");
     }
 
-    const preview = document.createElement("img");
     const galleryItems = getGalleryItems(entry);
-    const previewUrl = isGalleryEntry
-      ? galleryItems[0]?.thumbnailUrl || ""
-      : entry.thumbnailUrl || "";
-    preview.src = previewUrl;
-    preview.alt =
-      entry.title || (isGalleryEntry ? "Gallery preview" : "History image");
-    preview.loading = "lazy";
+    let preview = null;
+    let previewNode = null;
+    if (isGalleryEntry) {
+      const stack = document.createElement("div");
+      stack.className = "history-gallery-preview-stack";
+      const stackItems = galleryItems.slice(0, 4);
+      const rotations = [0, -10, 10, -10];
+
+      stackItems.forEach((galleryItem, index) => {
+        const layer = document.createElement("img");
+        layer.className = "history-gallery-preview-layer";
+        layer.src = galleryItem.thumbnailUrl || "";
+        layer.alt =
+          galleryItem.title ||
+          entry.galleryTitle ||
+          entry.title ||
+          "Gallery preview";
+        layer.loading = "lazy";
+        layer.decoding = "async";
+        layer.style.setProperty("--stack-offset", `${index * 8}px`);
+        layer.style.setProperty(
+          "--stack-rotate",
+          `${rotations[index] || 0}deg`,
+        );
+        layer.style.zIndex = String(stackItems.length - index);
+        stack.appendChild(layer);
+      });
+
+      previewNode = stack;
+    } else {
+      preview = document.createElement("img");
+      preview.src = getDisplayImageUrl(entry, "finder");
+      preview.alt = entry.title || "History image";
+      preview.loading = "lazy";
+      previewNode = preview;
+    }
 
     const meta = document.createElement("div");
     meta.className = "history-meta";
@@ -1970,6 +3053,11 @@ function renderHistory() {
       openBtn.dataset.openGalleryHistoryId = entry.id;
       actions.appendChild(openBtn);
     } else {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      setButtonIconLabel(editBtn, "fa-solid fa-pen", "Edit");
+      editBtn.dataset.editHistoryId = entry.id;
+
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
       setButtonIconLabel(copyBtn, "fa-solid fa-copy", "Copy");
@@ -1984,22 +3072,48 @@ function renderHistory() {
         redownloadBtn.title = "Unavailable for older history items";
       }
 
-      actions.appendChild(copyBtn);
-      actions.appendChild(redownloadBtn);
-    }
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    if (isGalleryEntry) {
-      setButtonIconLabel(removeBtn, "fa-solid fa-trash", "Delete");
-    } else {
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
       setButtonIconLabel(removeBtn, "fa-solid fa-trash", "Remove");
-    }
-    removeBtn.dataset.removeHistoryId = entry.id;
+      removeBtn.dataset.removeHistoryId = entry.id;
 
-    actions.appendChild(removeBtn);
+      const actionMenu = document.createElement("div");
+      actionMenu.className = "history-gallery-export-menu";
+
+      const actionMenuButton = document.createElement("button");
+      actionMenuButton.type = "button";
+      setButtonIconLabel(actionMenuButton, "fa-solid fa-ellipsis", "Actions");
+
+      const actionMenuPopover = document.createElement("div");
+      actionMenuPopover.className = "history-gallery-export-menu-popover";
+      actionMenuPopover.appendChild(editBtn);
+      actionMenuPopover.appendChild(copyBtn);
+      actionMenuPopover.appendChild(redownloadBtn);
+      actionMenuPopover.appendChild(removeBtn);
+
+      actionMenu.appendChild(actionMenuButton);
+      actionMenu.appendChild(actionMenuPopover);
+      actions.appendChild(actionMenu);
+
+      ensurePreviewForImage(
+        entry,
+        "finder",
+        (nextPreviewUrl) => {
+          preview.src = nextPreviewUrl;
+        },
+        { allowForegroundRebuild: false },
+      );
+    }
+
+    if (isGalleryEntry) {
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      setButtonIconLabel(removeBtn, "fa-solid fa-trash", "Delete");
+      removeBtn.dataset.removeHistoryId = entry.id;
+      actions.appendChild(removeBtn);
+    }
     meta.appendChild(actions);
-    item.appendChild(preview);
+    item.appendChild(previewNode);
     item.appendChild(meta);
 
     if (isGalleryEntry) {
@@ -2007,6 +3121,13 @@ function renderHistory() {
     } else {
       historySingleList.appendChild(item);
     }
+  });
+
+  historyList.querySelectorAll("[data-edit-history-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const entryId = button.getAttribute("data-edit-history-id");
+      openSingleVaultEditor(entryId);
+    });
   });
 
   historyList
@@ -2058,18 +3179,25 @@ function renderHistory() {
         setStatus("Preparing optimized image download from history...");
 
         try {
-          const { blob, width } = await optimizeImageForDownload(
-            entry.imageUrl,
-          );
+          const { sourceUrl, isEdited } =
+            await resolveDownloadSourceUrlForImage(entry, "finder");
+          if (!sourceUrl) {
+            throw new Error(
+              "No downloadable source URL available for history entry.",
+            );
+          }
+
+          const { blob, width } = await optimizeImageForDownload(sourceUrl);
           const fileName = normalizeFileNameForExport(
             entry.fileName || "wikimedia-image",
           );
           const savedToFolder = await exportBlob(blob, fileName);
           markHistoryEntryDownloaded(entryId);
           const kb = Math.round(blob.size / 1024);
+          const widthLabel = isEdited ? "edited" : `${width}px`;
           const message = savedToFolder
-            ? `Saved ${fileName} to ${exportDirectoryName} (${width}px, ${kb}KB).`
-            : `Downloaded ${fileName} (${width}px, ${kb}KB).`;
+            ? `Saved ${fileName} to ${exportDirectoryName} (${widthLabel}, ${kb}KB).`
+            : `Downloaded ${fileName} (${widthLabel}, ${kb}KB).`;
           showActionToast(message);
           setStatus(message);
         } catch (error) {
@@ -2288,7 +3416,8 @@ function openHistoryGalleryInspector(entryId, { syncHash = true } = {}) {
   historyEmpty.classList.add("hidden");
   historyHeader.classList.add("history-header--gallery");
   historyGalleryHeaderBar.classList.remove("hidden");
-  historyGalleryInlineEditBtn.classList.remove("hidden");
+  historyHeaderTitleEditBtn.classList.remove("hidden");
+  historyHeaderSubtitleEditBtn.classList.remove("hidden");
   if (typeof activeHistoryGalleryItemIndex !== "number") {
     activeHistoryGalleryItemIndex = 0;
   }
@@ -2311,8 +3440,8 @@ function closeHistoryGalleryInspector({ syncHash = true } = {}) {
   historyEmpty.classList.toggle("hidden", historyEntries.length > 0);
   historyHeader.classList.remove("history-header--gallery");
   resetHistoryHeaderDefaultText();
-  historyHeaderSubtitle.classList.remove("hidden");
-  historyGalleryInlineEditBtn.classList.add("hidden");
+  historyHeaderTitleEditBtn.classList.add("hidden");
+  historyHeaderSubtitleEditBtn.classList.add("hidden");
   historyGalleryHeaderBar.classList.add("hidden");
   historyGalleryItems.innerHTML = "";
   historyGalleryMeta.textContent = "";
@@ -2325,9 +3454,8 @@ function closeHistoryGalleryInspector({ syncHash = true } = {}) {
   historyGalleryLayoutSelect.value = "normal";
   historyGalleryWidthInput.value = "600";
   historyGalleryWidthRow.classList.add("hidden");
-  closeHistoryHeaderInlineEdit({ restore: true });
-  historyHeaderTitleInput.value = "";
-  historyHeaderSubtitleInput.value = "";
+  clearHistoryHeaderEditableState(historyHeaderTitle);
+  clearHistoryHeaderEditableState(historyHeaderSubtitle);
   setHistoryGalleryExportingState(false);
 
   if (syncHash) {
@@ -2347,6 +3475,7 @@ function renderHistoryGalleryInspector(entry) {
     historyGalleryDetailsEmpty.classList.remove("hidden");
     historyGalleryExportAllBtn.disabled = true;
     historyGalleryCopyAllCaptionsBtn.disabled = true;
+    stopHistoryGalleryAutoScroll();
     return;
   }
 
@@ -2452,6 +3581,7 @@ function renderHistoryGalleryInspector(entry) {
 
       if (touchDragActive) {
         event.preventDefault();
+        updateHistoryGalleryAutoScroll(touch.clientY);
         updateTouchHistoryGalleryDrag(event);
       }
     });
@@ -2466,6 +3596,7 @@ function renderHistoryGalleryInspector(entry) {
         finishTouchHistoryGalleryDrag(entry.id);
       }
 
+      stopHistoryGalleryAutoScroll();
       touchDragActive = false;
       touchStartPoint = null;
     });
@@ -2477,6 +3608,7 @@ function renderHistoryGalleryInspector(entry) {
       }
       touchDragActive = false;
       touchStartPoint = null;
+      stopHistoryGalleryAutoScroll();
       cancelTouchHistoryGalleryDrag();
     });
 
@@ -2507,6 +3639,7 @@ function renderHistoryGalleryInspector(entry) {
       touchDragActive = false;
       touchStartPoint = null;
       draggedHistoryGalleryIndex = null;
+      stopHistoryGalleryAutoScroll();
       historyGalleryItems
         .querySelectorAll(".history-gallery-thumb")
         .forEach((node) => {
@@ -2528,6 +3661,7 @@ function renderHistoryGalleryInspector(entry) {
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = "move";
       }
+      updateHistoryGalleryAutoScroll(event.clientY);
       updateHistoryGalleryDropIndicator(thumb, event.clientY);
     });
 
@@ -2567,10 +3701,12 @@ function renderHistoryGalleryInspector(entry) {
         !Number.isInteger(toIndex) ||
         fromIndex === toIndex
       ) {
+        stopHistoryGalleryAutoScroll();
         return;
       }
 
       moveHistoryGalleryItem(entry.id, fromIndex, toIndex);
+      stopHistoryGalleryAutoScroll();
     });
 
     historyGalleryItems.appendChild(thumb);
@@ -2591,7 +3727,18 @@ function selectHistoryGalleryItem(entryId, index) {
   }
 
   activeHistoryGalleryItemIndex = index;
-  renderHistoryGalleryInspector(entry);
+
+  historyGalleryItems
+    .querySelectorAll(".history-gallery-thumb")
+    .forEach((thumbEl) => {
+      const thumbIndex = Number.parseInt(
+        thumbEl.dataset.galleryIndex || "",
+        10,
+      );
+      thumbEl.classList.toggle("active", thumbIndex === index);
+    });
+
+  renderHistoryGalleryDetails(entry, index);
 }
 
 function getActiveHistoryGalleryContext() {
@@ -2642,11 +3789,35 @@ function renderHistoryGalleryDetails(entry, index) {
 
   historyGalleryDetailsEmpty.classList.add("hidden");
   historyGalleryDetails.classList.remove("hidden");
-  historyGalleryPreview.src = item.imageUrl || item.thumbnailUrl || "";
+  historyGalleryPreview.src = getDisplayImageUrl(item, `gallery:${entry.id}`);
   historyGalleryItemTitle.textContent = item.title || "Untitled";
   historyGalleryCaptionInput.value = draft.caption || "";
   historyGalleryLayoutSelect.value = draft.layout || "normal";
   historyGalleryWidthInput.value = String(draft.customWidth || 600);
+
+  const selectedGalleryKey = buildImageEditKey(item, `gallery:${entry.id}`);
+  ensurePreviewForImage(
+    item,
+    `gallery:${entry.id}`,
+    (previewUrl) => {
+      const context = getActiveHistoryGalleryContext();
+      if (!context?.item || !context?.entry) {
+        return;
+      }
+
+      const activeKey = buildImageEditKey(
+        context.item,
+        `gallery:${context.entry.id}`,
+      );
+      if (activeKey !== selectedGalleryKey) {
+        return;
+      }
+
+      historyGalleryPreview.src = previewUrl;
+    },
+    { allowForegroundRebuild: true },
+  );
+
   refreshActiveHistoryGalleryShortcode();
 }
 
@@ -2760,6 +3931,83 @@ function findHistoryGalleryThumbFromTouch(touch) {
   }
 
   return node.closest(".history-gallery-thumb");
+}
+
+function getHistoryGalleryScrollContainer() {
+  return historyGalleryItems.closest(".history-gallery-browser");
+}
+
+function runHistoryGalleryAutoScroll() {
+  if (!historyGalleryAutoScrollStep) {
+    historyGalleryAutoScrollRaf = null;
+    return;
+  }
+
+  const container = getHistoryGalleryScrollContainer();
+  if (!container) {
+    stopHistoryGalleryAutoScroll();
+    return;
+  }
+
+  container.scrollTop += historyGalleryAutoScrollStep;
+  historyGalleryAutoScrollRaf = window.requestAnimationFrame(
+    runHistoryGalleryAutoScroll,
+  );
+}
+
+function updateHistoryGalleryAutoScroll(clientY) {
+  const container = getHistoryGalleryScrollContainer();
+  if (!container || !Number.isFinite(clientY)) {
+    stopHistoryGalleryAutoScroll();
+    return;
+  }
+
+  const rect = container.getBoundingClientRect();
+  const topDistance = clientY - rect.top;
+  const bottomDistance = rect.bottom - clientY;
+  let nextStep = 0;
+
+  if (topDistance < HISTORY_GALLERY_AUTOSCROLL_EDGE_PX) {
+    const ratio =
+      (HISTORY_GALLERY_AUTOSCROLL_EDGE_PX - Math.max(0, topDistance)) /
+      HISTORY_GALLERY_AUTOSCROLL_EDGE_PX;
+    nextStep = -Math.max(
+      1,
+      Math.round(ratio * HISTORY_GALLERY_AUTOSCROLL_MAX_STEP),
+    );
+  } else if (bottomDistance < HISTORY_GALLERY_AUTOSCROLL_EDGE_PX) {
+    const ratio =
+      (HISTORY_GALLERY_AUTOSCROLL_EDGE_PX - Math.max(0, bottomDistance)) /
+      HISTORY_GALLERY_AUTOSCROLL_EDGE_PX;
+    nextStep = Math.max(
+      1,
+      Math.round(ratio * HISTORY_GALLERY_AUTOSCROLL_MAX_STEP),
+    );
+  }
+
+  historyGalleryAutoScrollStep = nextStep;
+
+  if (!historyGalleryAutoScrollStep) {
+    if (historyGalleryAutoScrollRaf !== null) {
+      window.cancelAnimationFrame(historyGalleryAutoScrollRaf);
+      historyGalleryAutoScrollRaf = null;
+    }
+    return;
+  }
+
+  if (historyGalleryAutoScrollRaf === null) {
+    historyGalleryAutoScrollRaf = window.requestAnimationFrame(
+      runHistoryGalleryAutoScroll,
+    );
+  }
+}
+
+function stopHistoryGalleryAutoScroll() {
+  historyGalleryAutoScrollStep = 0;
+  if (historyGalleryAutoScrollRaf !== null) {
+    window.cancelAnimationFrame(historyGalleryAutoScrollRaf);
+    historyGalleryAutoScrollRaf = null;
+  }
 }
 
 function clearHistoryGalleryDropIndicators() {
@@ -2885,6 +4133,7 @@ function finishTouchHistoryGalleryDrag(entryId) {
     : null;
 
   cancelTouchHistoryGalleryDrag();
+  stopHistoryGalleryAutoScroll();
 
   if (!Number.isInteger(targetIndex) || targetIndex === draggingIndex) {
     return;
@@ -2895,6 +4144,7 @@ function finishTouchHistoryGalleryDrag(entryId) {
 
 function cancelTouchHistoryGalleryDrag() {
   draggedHistoryGalleryIndex = null;
+  stopHistoryGalleryAutoScroll();
   historyGalleryItems
     .querySelectorAll(".history-gallery-thumb")
     .forEach((node) => {
@@ -2971,7 +4221,11 @@ function updateHistoryEntryFields(entryId, updates) {
       ...updates,
     };
 
-    if (JSON.stringify(nextItem) === JSON.stringify(item)) {
+    const updateKeys = Object.keys(updates);
+    const hasActualUpdate = updateKeys.some(
+      (key) => nextItem[key] !== item[key],
+    );
+    if (!hasActualUpdate) {
       return item;
     }
 
@@ -2991,12 +4245,6 @@ function updateHistoryEntryFields(entryId, updates) {
     );
     if (currentEntry?.type === "gallery") {
       applyHistoryGalleryHeaderText(currentEntry);
-      if (isHistoryHeaderEditing) {
-        historyHeaderTitleInput.value =
-          currentEntry.galleryTitle || currentEntry.title || "";
-        historyHeaderSubtitleInput.value =
-          getHistoryGalleryDescriptionText(currentEntry);
-      }
     }
   }
 }
@@ -3006,9 +4254,8 @@ function setHistoryGalleryExportingState(isExporting) {
   historyGalleryExportAllBtn.disabled = isExporting;
   historyGalleryAddMoreBtn.disabled = isExporting;
   historyGalleryPrefixExportCheckbox.disabled = isExporting;
-  historyGalleryInlineEditBtn.disabled = isExporting;
-  historyHeaderTitleInput.disabled = isExporting;
-  historyHeaderSubtitleInput.disabled = isExporting;
+  historyHeaderTitleEditBtn.disabled = isExporting;
+  historyHeaderSubtitleEditBtn.disabled = isExporting;
   updateHistoryGalleryExportAllButtonLabel();
 }
 
@@ -3199,6 +4446,10 @@ async function exportAllHistoryGalleryImages() {
   const updatedFileNames = new Map();
 
   setHistoryGalleryExportingState(true);
+  setProgressOverlay(
+    historyGalleryProgressOverlay,
+    "Preparing gallery export…",
+  );
 
   let successCount = 0;
   let failedCount = 0;
@@ -3211,10 +4462,17 @@ async function exportAllHistoryGalleryImages() {
         useGalleryPrefix && gallerySlug
           ? `${gallerySlug}/${baseFileName}`
           : baseFileName;
-      setStatus(`Exporting image ${index + 1}/${exportItems.length}...`);
+      const progressMessage = `Exporting image ${index + 1}/${exportItems.length}...`;
+      setStatus(progressMessage);
+      setProgressOverlay(historyGalleryProgressOverlay, progressMessage);
 
       try {
-        const { blob } = await optimizeImageForDownload(item.imageUrl);
+        const { sourceUrl } = await resolveDownloadSourceUrlForImage(
+          item,
+          `gallery:${entry.id}`,
+        );
+        const exportSourceUrl = sourceUrl || item.imageUrl;
+        const { blob } = await optimizeImageForDownload(exportSourceUrl);
         let savedToFolder = false;
 
         if (useGalleryPrefix && gallerySlug && exportDirectoryHandle) {
@@ -3270,6 +4528,7 @@ async function exportAllHistoryGalleryImages() {
     setStatus(statusText);
     showActionToast(statusText);
   } finally {
+    clearProgressOverlay(historyGalleryProgressOverlay);
     setHistoryGalleryExportingState(false);
   }
 }
@@ -3367,95 +4626,149 @@ function markHistoryEntryDownloaded(entryId) {
 }
 
 function loadHistory() {
+  return loadHistoryFromLocalStorage();
+}
+
+function sanitizeHistoryEntries(parsed) {
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      ...item,
+      type: item.type === "gallery" ? "gallery" : "image",
+      title: typeof item.title === "string" ? item.title : "",
+      thumbnailUrl:
+        typeof item.thumbnailUrl === "string" ? item.thumbnailUrl : "",
+      imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
+      fileName: typeof item.fileName === "string" ? item.fileName : "",
+      layout: typeof item.layout === "string" ? item.layout : "",
+      galleryTitle:
+        typeof item.galleryTitle === "string" ? item.galleryTitle : "",
+      galleryDescription:
+        typeof item.galleryDescription === "string"
+          ? item.galleryDescription
+          : "",
+      galleryItems: Array.isArray(item.galleryItems)
+        ? item.galleryItems
+            .filter(
+              (galleryItem) => galleryItem && typeof galleryItem === "object",
+            )
+            .map((galleryItem) => ({
+              pageId: galleryItem.pageId,
+              title:
+                typeof galleryItem.title === "string" ? galleryItem.title : "",
+              thumbnailUrl:
+                typeof galleryItem.thumbnailUrl === "string"
+                  ? galleryItem.thumbnailUrl
+                  : "",
+              imageUrl:
+                typeof galleryItem.imageUrl === "string"
+                  ? galleryItem.imageUrl
+                  : "",
+              fileName:
+                typeof galleryItem.fileName === "string"
+                  ? galleryItem.fileName
+                  : "",
+              relativePath:
+                typeof galleryItem.relativePath === "string"
+                  ? galleryItem.relativePath
+                  : "",
+              author:
+                typeof galleryItem.author === "string"
+                  ? galleryItem.author
+                  : "",
+              licenseShort:
+                typeof galleryItem.licenseShort === "string"
+                  ? galleryItem.licenseShort
+                  : "",
+              description:
+                typeof galleryItem.description === "string"
+                  ? galleryItem.description
+                  : "",
+              draftCaption:
+                typeof galleryItem.draftCaption === "string"
+                  ? galleryItem.draftCaption
+                  : "",
+              draftLayout:
+                typeof galleryItem.draftLayout === "string"
+                  ? galleryItem.draftLayout
+                  : "",
+              draftCustomWidth: Number.parseInt(
+                galleryItem.draftCustomWidth,
+                10,
+              ),
+            }))
+        : [],
+      copiedText: typeof item.copiedText === "string" ? item.copiedText : "",
+      downloaded: Boolean(item.downloaded),
+    }));
+}
+
+function loadHistoryFromLocalStorage() {
   try {
     const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
     if (!raw) {
       return [];
     }
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed
-      .filter((item) => item && typeof item === "object")
-      .map((item) => ({
-        ...item,
-        type: item.type === "gallery" ? "gallery" : "image",
-        title: typeof item.title === "string" ? item.title : "",
-        thumbnailUrl:
-          typeof item.thumbnailUrl === "string" ? item.thumbnailUrl : "",
-        imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
-        fileName: typeof item.fileName === "string" ? item.fileName : "",
-        layout: typeof item.layout === "string" ? item.layout : "",
-        galleryTitle:
-          typeof item.galleryTitle === "string" ? item.galleryTitle : "",
-        galleryDescription:
-          typeof item.galleryDescription === "string"
-            ? item.galleryDescription
-            : "",
-        galleryItems: Array.isArray(item.galleryItems)
-          ? item.galleryItems
-              .filter(
-                (galleryItem) => galleryItem && typeof galleryItem === "object",
-              )
-              .map((galleryItem) => ({
-                pageId: galleryItem.pageId,
-                title:
-                  typeof galleryItem.title === "string"
-                    ? galleryItem.title
-                    : "",
-                thumbnailUrl:
-                  typeof galleryItem.thumbnailUrl === "string"
-                    ? galleryItem.thumbnailUrl
-                    : "",
-                imageUrl:
-                  typeof galleryItem.imageUrl === "string"
-                    ? galleryItem.imageUrl
-                    : "",
-                fileName:
-                  typeof galleryItem.fileName === "string"
-                    ? galleryItem.fileName
-                    : "",
-                relativePath:
-                  typeof galleryItem.relativePath === "string"
-                    ? galleryItem.relativePath
-                    : "",
-                author:
-                  typeof galleryItem.author === "string"
-                    ? galleryItem.author
-                    : "",
-                licenseShort:
-                  typeof galleryItem.licenseShort === "string"
-                    ? galleryItem.licenseShort
-                    : "",
-                description:
-                  typeof galleryItem.description === "string"
-                    ? galleryItem.description
-                    : "",
-                draftCaption:
-                  typeof galleryItem.draftCaption === "string"
-                    ? galleryItem.draftCaption
-                    : "",
-                draftLayout:
-                  typeof galleryItem.draftLayout === "string"
-                    ? galleryItem.draftLayout
-                    : "",
-                draftCustomWidth: Number.parseInt(
-                  galleryItem.draftCustomWidth,
-                  10,
-                ),
-              }))
-          : [],
-        copiedText: typeof item.copiedText === "string" ? item.copiedText : "",
-        downloaded: Boolean(item.downloaded),
-      }));
+    return sanitizeHistoryEntries(parsed);
   } catch {
     return [];
   }
 }
 
+async function loadHistoryFromFastStorage() {
+  try {
+    const db = await openDirectoryDb();
+    const value = await new Promise((resolve, reject) => {
+      const tx = db.transaction(DIRECTORY_STORE_NAME, "readonly");
+      const req = tx
+        .objectStore(DIRECTORY_STORE_NAME)
+        .get(HISTORY_INDEXED_DB_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    return sanitizeHistoryEntries(value);
+  } catch {
+    return [];
+  }
+}
+
+async function saveHistoryToFastStorage(entries) {
+  try {
+    const db = await openDirectoryDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(DIRECTORY_STORE_NAME, "readwrite");
+      tx.objectStore(DIRECTORY_STORE_NAME).put(entries, HISTORY_INDEXED_DB_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+async function initHistoryStorageSync() {
+  const fastEntries = await loadHistoryFromFastStorage();
+  if (fastEntries.length > 0) {
+    historyEntries = fastEntries;
+    renderHistory();
+    return;
+  }
+
+  if (historyEntries.length > 0) {
+    await saveHistoryToFastStorage(historyEntries);
+  }
+}
+
 function persistHistory() {
   localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyEntries));
+  void saveHistoryToFastStorage(historyEntries);
 }
 
 function loadSettings() {
@@ -3485,6 +4798,87 @@ function loadSettings() {
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
+
+function loadImageEdits() {
+  try {
+    const raw = localStorage.getItem(IMAGE_EDITS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const sanitized = {};
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (!value || typeof value !== "object") {
+        return;
+      }
+
+      if (typeof value.previewDataUrl === "string" && value.previewDataUrl) {
+        imageEditsNeedsCompaction = true;
+      }
+
+      const history = Array.isArray(value.history)
+        ? value.history
+            .map((step) => ({
+              x: Number(step?.x),
+              y: Number(step?.y),
+              width: Number(step?.width),
+              height: Number(step?.height),
+            }))
+            .filter(
+              (step) =>
+                Number.isFinite(step.x) &&
+                Number.isFinite(step.y) &&
+                Number.isFinite(step.width) &&
+                Number.isFinite(step.height) &&
+                step.width > 0 &&
+                step.height > 0,
+            )
+        : [];
+
+      const operations = normalizeEditOperations(
+        Array.isArray(value.operations)
+          ? value.operations
+          : history.map((step) => ({ type: "crop", ...step })),
+      );
+
+      if (!operations.length && !history.length) {
+        return;
+      }
+
+      sanitized[key] = {
+        fileName:
+          typeof value.fileName === "string" && value.fileName.trim()
+            ? value.fileName.trim()
+            : "",
+        history,
+        operations,
+        updatedAt: Number.isFinite(Number(value.updatedAt))
+          ? Number(value.updatedAt)
+          : Date.now(),
+      };
+    });
+
+    return sanitized;
+  } catch {
+    return {};
+  }
+}
+
+function saveImageEdits() {
+  try {
+    localStorage.setItem(
+      IMAGE_EDITS_STORAGE_KEY,
+      JSON.stringify(persistedImageEdits),
+    );
+  } catch {
+    setStatus("Could not persist image edits. Storage may be full.");
+  }
 }
 
 function isDirectoryExportSupported() {
@@ -3527,6 +4921,20 @@ async function clearExportDirectory() {
   setStatus("Export folder cleared.");
 }
 
+function isUnusableFileSystemObjectError(error) {
+  return (
+    error instanceof DOMException &&
+    /not, or is no longer, usable/i.test(error.message || "")
+  );
+}
+
+function invalidateExportDirectoryHandle() {
+  exportDirectoryHandle = null;
+  exportDirectoryName = "";
+  updateExportDirectoryUI();
+  void clearDirectoryHandle();
+}
+
 async function exportBlob(blob, fileName) {
   if (!exportDirectoryHandle) {
     triggerDownload(blob, fileName);
@@ -3551,6 +4959,12 @@ async function exportBlob(blob, fileName) {
     return true;
   } catch (error) {
     console.error(error);
+    if (isUnusableFileSystemObjectError(error)) {
+      invalidateExportDirectoryHandle();
+      setStatus(
+        "Export folder handle expired. Falling back to browser download.",
+      );
+    }
     triggerDownload(blob, fileName);
     return false;
   }
@@ -3596,11 +5010,14 @@ function updateExportDirectoryUI() {
 
 async function openDirectoryDb() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DIRECTORY_DB_NAME, 1);
+    const request = indexedDB.open(DIRECTORY_DB_NAME, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(DIRECTORY_STORE_NAME)) {
         db.createObjectStore(DIRECTORY_STORE_NAME);
+      }
+      if (!db.objectStoreNames.contains(PREVIEW_CACHE_STORE_NAME)) {
+        db.createObjectStore(PREVIEW_CACHE_STORE_NAME);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -3753,14 +5170,77 @@ function syncMobileDetailsState() {
   detailsToggleBtn.textContent = "Hide details panel";
 }
 
-async function optimizeImageForDownload(imageUrl) {
+function loadImageForCanvas(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () =>
+      reject(new Error("Image decode failed for optimization source."));
+    image.src = url;
+  });
+}
+
+async function decodeBlobForCanvas(sourceBlob) {
+  if (!(sourceBlob instanceof Blob) || sourceBlob.size === 0) {
+    throw new Error("Image source blob is empty.");
+  }
+
+  try {
+    const bitmap = await createImageBitmap(sourceBlob);
+    return {
+      drawable: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      cleanup: () => bitmap.close(),
+    };
+  } catch (bitmapError) {
+    const blobUrl = URL.createObjectURL(sourceBlob);
+    try {
+      const image = await loadImageForCanvas(blobUrl);
+      return {
+        drawable: image,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+        cleanup: () => URL.revokeObjectURL(blobUrl),
+      };
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      throw bitmapError;
+    }
+  }
+}
+
+function yieldToUi() {
+  return new Promise((resolve) => {
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => resolve());
+      return;
+    }
+
+    window.setTimeout(resolve, 0);
+  });
+}
+
+async function optimizeImageForDownload(imageUrl, options = {}) {
+  const onProgress =
+    typeof options?.onProgress === "function" ? options.onProgress : null;
+
+  if (onProgress) {
+    onProgress("Fetching image for download…");
+  }
+
   const response = await fetch(imageUrl);
   if (!response.ok) {
     throw new Error(`Image fetch failed with status ${response.status}`);
   }
 
   const sourceBlob = await response.blob();
-  const sourceBitmap = await createImageBitmap(sourceBlob);
+  if (onProgress) {
+    onProgress("Decoding image…");
+  }
+  const source = await decodeBlobForCanvas(sourceBlob);
 
   try {
     const maxWidth = parseExportMaxWidth(settings.exportMaxWidth);
@@ -3768,10 +5248,22 @@ async function optimizeImageForDownload(imageUrl) {
     const exportFormat = getActiveExportFormat();
     const mimeType = getExportMimeType(exportFormat);
 
-    let targetWidth = Math.min(sourceBitmap.width, maxWidth);
+    const sourceType = (sourceBlob.type || "").toLowerCase();
+    const canPassThrough =
+      source.width <= maxWidth &&
+      sourceBlob.size <= targetBytes &&
+      ((mimeType === "image/png" && sourceType === "image/png") ||
+        (mimeType === "image/jpeg" && sourceType === "image/jpeg") ||
+        (mimeType === "image/webp" && sourceType === "image/webp"));
+
+    if (canPassThrough) {
+      return { blob: sourceBlob, width: source.width };
+    }
+
+    let targetWidth = Math.min(source.width, maxWidth);
     let targetHeight = Math.max(
       1,
-      Math.round((sourceBitmap.height / sourceBitmap.width) * targetWidth),
+      Math.round((source.height / source.width) * targetWidth),
     );
 
     const canvas = document.createElement("canvas");
@@ -3783,16 +5275,29 @@ async function optimizeImageForDownload(imageUrl) {
     let bestBlob = null;
     let bestWidth = targetWidth;
 
-    while (targetWidth >= 320) {
+    const minExportWidth = Math.max(1, Math.min(320, targetWidth));
+    const adaptiveQualitySteps = [0.86, 0.72, 0.58];
+
+    while (targetWidth >= minExportWidth) {
+      if (onProgress) {
+        onProgress(`Optimizing image… ${targetWidth}px`);
+      }
+      await yieldToUi();
+
       canvas.width = targetWidth;
       canvas.height = targetHeight;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "medium";
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(sourceBitmap, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(source.drawable, 0, 0, canvas.width, canvas.height);
+
+      let lastEncodedSize = 0;
 
       if (mimeType === "image/png") {
         const pngBlob = await canvasToImageBlob(canvas, mimeType);
+        lastEncodedSize = pngBlob.size;
         if (!bestBlob || pngBlob.size < bestBlob.size) {
           bestBlob = pngBlob;
           bestWidth = targetWidth;
@@ -3802,15 +5307,14 @@ async function optimizeImageForDownload(imageUrl) {
           return { blob: pngBlob, width: targetWidth };
         }
       } else {
-        const qualitySteps = [
-          0.92, 0.85, 0.78, 0.7, 0.62, 0.54, 0.46, 0.38, 0.3,
-        ];
-        for (const quality of qualitySteps) {
+        for (const quality of adaptiveQualitySteps) {
+          await yieldToUi();
           const encodedBlob = await canvasToImageBlob(
             canvas,
             mimeType,
             quality,
           );
+          lastEncodedSize = encodedBlob.size;
           if (!bestBlob || encodedBlob.size < bestBlob.size) {
             bestBlob = encodedBlob;
             bestWidth = targetWidth;
@@ -3822,10 +5326,22 @@ async function optimizeImageForDownload(imageUrl) {
         }
       }
 
-      targetWidth = Math.floor(targetWidth * 0.9);
+      const suggestedScale = Math.max(
+        0.65,
+        Math.min(
+          0.9,
+          Math.sqrt(targetBytes / Math.max(lastEncodedSize, 1)) * 0.95,
+        ),
+      );
+      const fallbackScale = 0.82;
+      const nextWidth = Math.floor(targetWidth * suggestedScale);
+      targetWidth =
+        Number.isFinite(nextWidth) && nextWidth < targetWidth
+          ? nextWidth
+          : Math.floor(targetWidth * fallbackScale);
       targetHeight = Math.max(
         1,
-        Math.round((sourceBitmap.height / sourceBitmap.width) * targetWidth),
+        Math.round((source.height / source.width) * targetWidth),
       );
     }
 
@@ -3835,7 +5351,7 @@ async function optimizeImageForDownload(imageUrl) {
 
     return { blob: bestBlob, width: bestWidth };
   } finally {
-    sourceBitmap.close();
+    source.cleanup();
   }
 }
 
@@ -3978,11 +5494,16 @@ updateWidthVisibility();
 updateDownloadButtonState();
 syncMobileDetailsState();
 settings = loadSettings();
+persistedImageEdits = loadImageEdits();
+if (imageEditsNeedsCompaction) {
+  saveImageEdits();
+}
 applySettingsToUI();
 applyGridColumns();
 applyGalleryModeUI();
 historyEntries = loadHistory();
 renderHistory();
+void initHistoryStorageSync();
 window.addEventListener("hashchange", applyRouteFromHash);
 applyRouteFromHash();
 initExportDirectory();

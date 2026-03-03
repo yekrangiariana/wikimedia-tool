@@ -166,7 +166,22 @@
           </article>
 
           <article id="details" class="details hidden" aria-live="polite">
-            <img id="detailPreview" alt="Selected Wikimedia image preview" />
+            <div class="editable-preview">
+              <button id="detailEditBtn" type="button" class="preview-edit-btn">
+                <i class="fa-solid fa-crop-simple" aria-hidden="true"></i>
+                <span>Edit</span>
+              </button>
+              <div id="detailProgressOverlay" class="progress-overlay hidden">
+                <span>Processing…</span>
+              </div>
+              <img
+                id="detailPreview"
+                alt="Selected Wikimedia image preview"
+                loading="lazy"
+                decoding="async"
+                fetchpriority="low"
+              />
+            </div>
 
             <div class="meta">
               <h2 id="detailTitle"></h2>
@@ -263,31 +278,27 @@
         <div class="history-header-title-row">
           <h2 id="historyHeaderTitle">Content Vault</h2>
           <button
-            id="historyGalleryInlineEditBtn"
+            id="historyHeaderTitleEditBtn"
             type="button"
-            class="hidden"
-            aria-label="Edit gallery title and description"
+            class="history-header-edit-icon hidden"
+            aria-label="Edit gallery title"
           >
-            <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
-            <span>Edit</span>
+            <i class="fa-solid fa-pen" aria-hidden="true"></i>
           </button>
         </div>
-        <input
-          id="historyHeaderTitleInput"
-          class="history-header-inline-title hidden"
-          type="text"
-          aria-label="Edit gallery title"
-        />
-        <p id="historyHeaderSubtitle">
-          Saved assets and shortcodes for quick reuse.
-        </p>
-        <textarea
-          id="historyHeaderSubtitleInput"
-          class="history-header-inline-description hidden"
-          rows="2"
-          aria-label="Edit gallery description"
-        ></textarea>
-
+        <div class="history-header-subtitle-row">
+          <p id="historyHeaderSubtitle">
+            Saved assets and shortcodes for quick reuse.
+          </p>
+          <button
+            id="historyHeaderSubtitleEditBtn"
+            type="button"
+            class="history-header-edit-icon hidden"
+            aria-label="Edit gallery description"
+          >
+            <i class="fa-solid fa-pen" aria-hidden="true"></i>
+          </button>
+        </div>
         <div
           id="historyGalleryHeaderBar"
           class="history-gallery-header-bar hidden"
@@ -308,6 +319,10 @@
                 <span>Actions</span>
               </button>
               <div class="history-gallery-export-menu-popover">
+                <button id="historyGalleryEditBtn" type="button">
+                  <i class="fa-solid fa-crop-simple" aria-hidden="true"></i>
+                  <span>Edit photo</span>
+                </button>
                 <button id="historyGalleryAddMoreBtn" type="button">
                   <i class="fa-solid fa-plus" aria-hidden="true"></i>
                   <span>Images</span>
@@ -341,29 +356,29 @@
             </div>
 
             <article id="historyGalleryDetails" class="details hidden">
-              <img id="historyGalleryPreview" alt="Gallery image preview" />
+              <div class="editable-preview">
+                <div
+                  id="historyGalleryProgressOverlay"
+                  class="progress-overlay hidden"
+                >
+                  <span>Processing…</span>
+                </div>
+                <img
+                  id="historyGalleryPreview"
+                  alt="Gallery image preview"
+                  loading="lazy"
+                  decoding="async"
+                  fetchpriority="low"
+                />
+              </div>
 
               <div class="meta">
                 <h2 id="historyGalleryItemTitle"></h2>
               </div>
 
               <div class="generator">
-                <h3>Per-image shortcode</h3>
-
                 <div class="field-row">
                   <label for="historyGalleryCaptionInput">Caption</label>
-                  <div class="button-row button-row--tight">
-                    <button
-                      id="historyGalleryFillDefaultCaptionBtn"
-                      type="button"
-                    >
-                      <i
-                        class="fa-solid fa-wand-magic-sparkles"
-                        aria-hidden="true"
-                      ></i>
-                      <span>Default caption</span>
-                    </button>
-                  </div>
                   <textarea
                     id="historyGalleryCaptionInput"
                     rows="2"
@@ -406,7 +421,19 @@
                   ></textarea>
                 </div>
 
-                <div class="button-row">
+                <div
+                  class="button-row button-row--tight history-gallery-generator-actions"
+                >
+                  <button
+                    id="historyGalleryFillDefaultCaptionBtn"
+                    type="button"
+                  >
+                    <i
+                      class="fa-solid fa-wand-magic-sparkles"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Default caption</span>
+                  </button>
                   <button id="historyGalleryCopyBtn" type="button">
                     <i class="fa-solid fa-copy" aria-hidden="true"></i>
                     <span>Copy shortcode</span>
@@ -425,13 +452,164 @@
         </section>
 
         <section class="history-section">
-          <h3>Single Assets</h3>
+          <h3>Previously used</h3>
           <div id="historySingleList" class="history-list"></div>
         </section>
       </div>
       <p id="historyEmpty" class="empty-state">
         Your vault is empty. Copy or download an item to save it here.
       </p>
+    </main>
+
+    <main id="editorView" class="editor-view hidden">
+      <section class="editor-shell">
+        <header class="editor-toolbar">
+          <div class="editor-toolbar-main">
+            <button id="editorBackBtn" type="button">
+              <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+              <span>Back</span>
+            </button>
+            <button id="editorCropToggleBtn" type="button">
+              <i class="fa-solid fa-vector-square" aria-hidden="true"></i>
+              <span>Crop</span>
+            </button>
+            <button id="editorRemoveBgBtn" type="button">
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              <span>Cutout</span>
+            </button>
+            <button id="editorBackgroundBtn" type="button">
+              <i class="fa-solid fa-fill-drip" aria-hidden="true"></i>
+              <span>Background</span>
+            </button>
+            <button id="editorEraserBtn" type="button">
+              <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+              <span>Eraser</span>
+            </button>
+          </div>
+
+          <div class="editor-toolbar-actions">
+            <button id="editorResetBtn" type="button">
+              <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+              <span>Reset</span>
+            </button>
+            <button id="editorDownloadBtn" type="button">
+              <i class="fa-solid fa-download" aria-hidden="true"></i>
+              <span>Download</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="editor-workspace">
+          <div id="editorStage" class="editor-stage">
+            <div id="editorProgressOverlay" class="progress-overlay hidden">
+              <span>Processing…</span>
+            </div>
+            <canvas id="editorCanvas"></canvas>
+            <canvas id="editorOverlay"></canvas>
+          </div>
+
+          <aside class="editor-panel">
+            <p id="editorTitle" class="editor-title editor-panel-title">
+              Image editor
+            </p>
+            <div id="editorCropContent" class="hidden">
+              <h2>Crop</h2>
+              <div id="editorAspectRatioRow" class="field-row hidden">
+                <label for="editorAspectRatioSelect">Aspect ratio</label>
+                <select id="editorAspectRatioSelect">
+                  <option value="free">Free</option>
+                  <option value="1:1">1:1 Square</option>
+                  <option value="4:3">4:3 Landscape</option>
+                  <option value="4:5">4:5 Portrait</option>
+                  <option value="3:2">3:2 Classic</option>
+                  <option value="16:9">16:9 Wide</option>
+                </select>
+              </div>
+              <div class="button-row">
+                <button id="editorUndoBtn" type="button">
+                  <i
+                    class="fa-solid fa-arrow-rotate-left"
+                    aria-hidden="true"
+                  ></i>
+                  <span>Undo last edit</span>
+                </button>
+                <button id="editorApplyCropBtn" type="button">
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
+                  <span>Apply crop</span>
+                </button>
+              </div>
+              <p class="settings-note">
+                Free mode: drag to draw. Fixed ratio: move or resize the crop
+                box, then apply crop.
+              </p>
+            </div>
+            <div id="editorBackgroundContent" class="hidden">
+              <h2>Background</h2>
+              <div class="field-row">
+                <label for="editorBackgroundColorInput">Solid colour</label>
+                <input
+                  id="editorBackgroundColorInput"
+                  type="color"
+                  value="#ffffff"
+                />
+              </div>
+              <div class="button-row">
+                <button id="editorApplyBackgroundBtn" type="button">
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
+                  <span>Apply background</span>
+                </button>
+              </div>
+              <p class="settings-note">
+                Adds a solid colour behind the current image.
+              </p>
+            </div>
+            <div id="editorEraserContent" class="hidden">
+              <h2>Eraser</h2>
+              <div class="field-row">
+                <label for="editorEraserSizeInput">Brush size</label>
+                <input
+                  id="editorEraserSizeInput"
+                  type="range"
+                  min="4"
+                  max="120"
+                  step="1"
+                  value="24"
+                />
+                <p id="editorEraserSizeValue" class="settings-note">24 px</p>
+              </div>
+              <div class="field-row">
+                <label for="editorEraserOpacityInput">Brush softness</label>
+                <input
+                  id="editorEraserOpacityInput"
+                  type="range"
+                  min="5"
+                  max="100"
+                  step="1"
+                  value="100"
+                />
+                <p id="editorEraserOpacityValue" class="settings-note">
+                  100%
+                </p>
+              </div>
+              <div class="button-row button-row--tight">
+                <button id="editorEraserUndoBtn" type="button">
+                  <i class="fa-solid fa-arrow-rotate-left" aria-hidden="true"></i>
+                  <span>Undo</span>
+                </button>
+                <button id="editorEraserRedoBtn" type="button">
+                  <i class="fa-solid fa-arrow-rotate-right" aria-hidden="true"></i>
+                  <span>Redo</span>
+                </button>
+              </div>
+              <p class="settings-note">
+                Drag on the image to erase edges and clean up the cutout.
+              </p>
+            </div>
+            <p id="editorDimensions" class="settings-note"></p>
+            <p id="editorHistoryInfo" class="settings-note"></p>
+          </aside>
+        </section>
+      </section>
     </main>
 
     <aside id="settingsPanel" class="settings-panel hidden" aria-hidden="true">
@@ -564,6 +742,11 @@
     </aside>
 
     <div id="settingsBackdrop" class="settings-backdrop hidden"></div>
+    <div
+      id="progressNotice"
+      class="progress-notice hidden"
+      aria-live="polite"
+    ></div>
     <div id="actionToast" class="action-toast" aria-live="polite"></div>
 
     <script type="module" src="js/main.js"></script>

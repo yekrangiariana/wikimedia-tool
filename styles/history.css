@@ -22,17 +22,10 @@
   gap: 8px;
 }
 
-.history-header-title-row #historyGalleryInlineEditBtn {
-  margin-left: auto;
-}
-
-.history-header-inline-title,
-.history-header-inline-description {
-  margin-top: 6px;
-}
-
-.history-header-inline-description {
-  min-height: 68px;
+.history-header-subtitle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .history-header p {
@@ -40,6 +33,29 @@
   color: var(--text-light);
   font-size: var(--font-size-xs);
   line-height: 1.45;
+}
+
+.history-header-edit-icon {
+  padding: 3px 7px;
+  min-height: 24px;
+  margin-left: 0;
+}
+
+.history-header-edit-icon i {
+  font-size: 11px;
+}
+
+#historyHeaderTitle[contenteditable="true"],
+#historyHeaderSubtitle[contenteditable="true"] {
+  border: var(--border-light);
+  background: var(--input-bg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  outline: none;
+}
+
+#historyHeaderSubtitle[contenteditable="true"] {
+  min-height: 42px;
 }
 
 .history-header--gallery {
@@ -50,9 +66,7 @@
 }
 
 .history-header--gallery .history-header-title-row,
-.history-header--gallery #historyHeaderTitleInput,
-.history-header--gallery #historyHeaderSubtitle,
-.history-header--gallery #historyHeaderSubtitleInput {
+.history-header--gallery .history-header-subtitle-row {
   grid-column: 1;
 }
 
@@ -255,6 +269,25 @@
   background: var(--surface-muted);
 }
 
+.history-gallery-preview-stack {
+  width: 120px;
+  height: 144px;
+  position: relative;
+}
+
+.history-gallery-preview-layer {
+  position: absolute;
+  top: var(--stack-offset, 0);
+  left: 0;
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border: var(--border-light);
+  background: var(--surface-muted);
+  transform: rotate(var(--stack-rotate, 0deg));
+  transform-origin: center;
+}
+
 .history-meta h3 {
   margin: 0 0 6px;
   font-size: var(--font-size-sm);
@@ -276,6 +309,22 @@
 
 .history-meta .button-row {
   gap: 6px;
+}
+
+.history-meta .button-row .history-gallery-export-menu {
+  margin-left: auto;
+}
+
+.history-item:not(.history-gallery-entry) .history-meta {
+  position: relative;
+  padding-top: 36px;
+}
+
+.history-item:not(.history-gallery-entry) .history-meta .button-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
 }
 
 .history-gallery-entry .field-row {
@@ -403,6 +452,11 @@
   padding: 14px;
   overflow: auto;
   max-height: 72vh;
+}
+
+.history-gallery-generator-actions {
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 #historyGalleryPreview {
