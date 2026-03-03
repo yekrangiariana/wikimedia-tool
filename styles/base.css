@@ -64,10 +64,14 @@ button {
   background: var(--input-bg);
   color: var(--text);
   border-radius: 4px;
-  padding: 10px 16px;
+  padding: 5px 11px;
   cursor: pointer;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-label);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 button:hover {
@@ -78,6 +82,13 @@ button:hover {
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+button i.fa-solid,
+button i.fa-regular,
+button i.fa-brands {
+  font-size: 0.9em;
+  line-height: 1;
 }
 
 .empty-state {

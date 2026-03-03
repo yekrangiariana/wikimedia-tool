@@ -46,11 +46,22 @@ const finderView = document.getElementById("finderView");
 const historyView = document.getElementById("historyView");
 const showFinderViewBtn = document.getElementById("showFinderViewBtn");
 const showHistoryViewBtn = document.getElementById("showHistoryViewBtn");
+const historyHeader = document.querySelector(".history-header");
 const historyList = document.getElementById("historyList");
 const historyGalleryList = document.getElementById("historyGalleryList");
 const historySingleList = document.getElementById("historySingleList");
 const historyEmpty = document.getElementById("historyEmpty");
+const historyHeaderTitle = document.getElementById("historyHeaderTitle");
 const historyHeaderSubtitle = document.getElementById("historyHeaderSubtitle");
+const historyHeaderTitleInput = document.getElementById(
+  "historyHeaderTitleInput",
+);
+const historyHeaderSubtitleInput = document.getElementById(
+  "historyHeaderSubtitleInput",
+);
+const historyGalleryInlineEditBtn = document.getElementById(
+  "historyGalleryInlineEditBtn",
+);
 const historyGalleryHeaderBar = document.getElementById(
   "historyGalleryHeaderBar",
 );
@@ -170,10 +181,18 @@ let scanningPhotoDate = false;
 let selectedGalleryItems = new Map();
 let currentGalleryHistoryId = null;
 let gallerySaveTimer = null;
+let galleryDoneButtonTimer = null;
+let galleryDoneLinkEntryId = null;
 let activeHistoryGalleryId = null;
 let activeHistoryGalleryItemIndex = null;
+let isHistoryHeaderEditing = false;
+let historyHeaderOriginalTitle = "";
+let historyHeaderOriginalDescription = "";
 const historyGalleryDrafts = new Map();
 let exportingHistoryGalleryImages = false;
+const ROUTE_FINDER = "finder";
+const ROUTE_VAULT = "vault";
+let isApplyingHashRoute = false;
 
 detailsToggleBtn.addEventListener("click", () => {
   if (!isSmallScreen()) {
@@ -192,12 +211,30 @@ historyGalleryExportAllBtn.addEventListener(
   "click",
   exportAllHistoryGalleryImages,
 );
+historyGalleryInlineEditBtn.addEventListener("click", toggleHistoryHeaderEdit);
+historyHeaderTitleInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveHistoryHeaderInlineEdit();
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeHistoryHeaderInlineEdit({ restore: true });
+  }
+});
+historyHeaderSubtitleInput.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeHistoryHeaderInlineEdit({ restore: true });
+  }
+});
 historyGalleryCopyAllCaptionsBtn.addEventListener(
   "click",
   copyAllHistoryGalleryCaptions,
 );
 historyGalleryPrefixExportCheckbox.addEventListener("change", () => {
   refreshActiveHistoryGalleryShortcode();
+  updateHistoryGalleryExportAllButtonLabel();
 });
 historyGalleryCaptionInput.addEventListener(
   "input",
@@ -265,7 +302,13 @@ clearExportDirBtn.addEventListener("click", clearExportDirectory);
 
 galleryTitleInput.addEventListener("input", scheduleGalleryAutoSave);
 galleryDescriptionInput.addEventListener("input", scheduleGalleryAutoSave);
-galleryDoneBtn.addEventListener("click", finishCurrentGallery);
+galleryDoneBtn.addEventListener("click", () => {
+  if (openSavedGalleryFromDoneButton()) {
+    return;
+  }
+
+  finishCurrentGallery();
+});
 
 searchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -818,8 +861,10 @@ function renderResults(items, options = {}) {
           return;
         }
 
-        const additive = Boolean(event.metaKey || event.ctrlKey);
-        toggleGallerySelection(item.pageId, { additive, forceChecked: null });
+        toggleGallerySelection(item.pageId, {
+          additive: true,
+          forceChecked: null,
+        });
         return;
       }
 
@@ -846,7 +891,7 @@ function renderResults(items, options = {}) {
 
 function selectImage(pageId) {
   if (isGalleryMode()) {
-    toggleGallerySelection(pageId, { additive: false });
+    toggleGallerySelection(pageId, { additive: true });
     return;
   }
 
@@ -1019,7 +1064,294 @@ function setStatus(message) {
   statusEl.textContent = message;
 }
 
-function setActiveView(viewName) {
+function setButtonIconLabel(button, iconClass, label) {
+  if (!button) {
+    return;
+  }
+
+  button.innerHTML = "";
+  const icon = document.createElement("i");
+  icon.className = iconClass;
+  icon.setAttribute("aria-hidden", "true");
+  button.append(icon);
+
+  if (label) {
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.append(text);
+  }
+}
+
+function getHistoryGalleryTitleWithCount(entry) {
+  if (!entry || entry.type !== "gallery") {
+    return "";
+  }
+
+  const itemsCount = getGalleryItems(entry).length;
+  const galleryTitle = entry.galleryTitle || entry.title || "Gallery";
+  return `${galleryTitle} • ${itemsCount} image${itemsCount === 1 ? "" : "s"}`;
+}
+
+function getHistoryGalleryDescriptionText(entry) {
+  if (!entry || entry.type !== "gallery") {
+    return "";
+  }
+
+  return (entry.galleryDescription || "").trim();
+}
+
+function getActiveHistoryGalleryEntry() {
+  if (!activeHistoryGalleryId) {
+    return null;
+  }
+
+  const entry = historyEntries.find(
+    (item) => item.id === activeHistoryGalleryId,
+  );
+  if (!entry || entry.type !== "gallery") {
+    return null;
+  }
+
+  return entry;
+}
+
+function applyHistoryGalleryHeaderText(entry) {
+  historyHeaderTitle.textContent = getHistoryGalleryTitleWithCount(entry);
+  historyHeaderSubtitle.textContent =
+    getHistoryGalleryDescriptionText(entry) || "No description.";
+  historyGalleryMeta.textContent = "";
+}
+
+function resetHistoryHeaderDefaultText() {
+  historyHeaderTitle.textContent = "Content Vault";
+  historyHeaderSubtitle.textContent =
+    "Saved assets and shortcodes for quick reuse.";
+}
+
+function openHistoryHeaderInlineEdit() {
+  const entry = getActiveHistoryGalleryEntry();
+  if (!entry) {
+    setStatus("Open a gallery first.");
+    return;
+  }
+
+  isHistoryHeaderEditing = true;
+  historyHeaderOriginalTitle = entry.galleryTitle || entry.title || "";
+  historyHeaderOriginalDescription = getHistoryGalleryDescriptionText(entry);
+  historyHeaderTitleInput.value = historyHeaderOriginalTitle;
+  historyHeaderSubtitleInput.value = historyHeaderOriginalDescription;
+
+  historyHeaderTitle.classList.add("hidden");
+  historyHeaderSubtitle.classList.add("hidden");
+  historyHeaderTitleInput.classList.remove("hidden");
+  historyHeaderSubtitleInput.classList.remove("hidden");
+  setButtonIconLabel(
+    historyGalleryInlineEditBtn,
+    "fa-solid fa-floppy-disk",
+    "Save",
+  );
+  historyHeaderTitleInput.focus();
+  historyHeaderTitleInput.select();
+}
+
+function closeHistoryHeaderInlineEdit({ restore = false } = {}) {
+  if (restore) {
+    historyHeaderTitleInput.value = historyHeaderOriginalTitle;
+    historyHeaderSubtitleInput.value = historyHeaderOriginalDescription;
+  }
+
+  isHistoryHeaderEditing = false;
+  historyHeaderTitleInput.classList.add("hidden");
+  historyHeaderSubtitleInput.classList.add("hidden");
+  historyHeaderTitle.classList.remove("hidden");
+  historyHeaderSubtitle.classList.remove("hidden");
+  setButtonIconLabel(
+    historyGalleryInlineEditBtn,
+    "fa-solid fa-pen-to-square",
+    "Edit",
+  );
+}
+
+function updateHistoryGalleryExportAllButtonLabel() {
+  if (!historyGalleryExportAllBtn) {
+    return;
+  }
+
+  if (exportingHistoryGalleryImages) {
+    setButtonIconLabel(
+      historyGalleryExportAllBtn,
+      "fa-solid fa-spinner",
+      "Exporting...",
+    );
+    return;
+  }
+
+  const folderModeText = historyGalleryPrefixExportCheckbox.checked
+    ? "Path ON"
+    : "Path OFF";
+  setButtonIconLabel(
+    historyGalleryExportAllBtn,
+    "fa-solid fa-file-export",
+    `Export all (${folderModeText})`,
+  );
+}
+
+function saveHistoryHeaderInlineEdit() {
+  const entry = getActiveHistoryGalleryEntry();
+  if (!entry) {
+    setStatus("Gallery not found.");
+    closeHistoryHeaderInlineEdit({ restore: true });
+    return;
+  }
+
+  const galleryTitle = (historyHeaderTitleInput.value || "").trim();
+  const galleryDescription = (historyHeaderSubtitleInput.value || "").trim();
+  const nextTitle = galleryTitle || entry.title || "Gallery";
+
+  updateHistoryEntryFields(entry.id, {
+    galleryTitle,
+    galleryDescription,
+    title: nextTitle,
+  });
+
+  closeHistoryHeaderInlineEdit();
+  const refreshed = getActiveHistoryGalleryEntry();
+  if (refreshed) {
+    applyHistoryGalleryHeaderText(refreshed);
+  }
+  setStatus("Gallery details updated.");
+}
+
+function toggleHistoryHeaderEdit() {
+  if (!activeHistoryGalleryId) {
+    return;
+  }
+
+  if (isHistoryHeaderEditing) {
+    saveHistoryHeaderInlineEdit();
+    return;
+  }
+
+  openHistoryHeaderInlineEdit();
+}
+
+function normalizeRouteView(value) {
+  return value === ROUTE_VAULT || value === "history" ? "history" : "finder";
+}
+
+function parseHashRoute() {
+  const rawHash = (window.location.hash || "").replace(/^#/, "").trim();
+  if (!rawHash) {
+    return {
+      viewName: "finder",
+      galleryId: null,
+      settingsOpen: false,
+    };
+  }
+
+  const [rawPath = "", rawQuery = ""] = rawHash.split("?");
+  const segments = rawPath
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const firstSegment = (segments[0] || ROUTE_FINDER).toLowerCase();
+  const viewName = normalizeRouteView(firstSegment);
+  const query = new URLSearchParams(rawQuery);
+  const settingsOpen = query.get("settings") === "1";
+
+  let galleryId = null;
+  if (
+    viewName === "history" &&
+    segments[1] === "gallery" &&
+    typeof segments[2] === "string" &&
+    segments[2]
+  ) {
+    try {
+      galleryId = decodeURIComponent(segments[2]);
+    } catch {
+      galleryId = segments[2];
+    }
+  }
+
+  return {
+    viewName,
+    galleryId,
+    settingsOpen,
+  };
+}
+
+function buildHashRoute({ viewName, galleryId, settingsOpen }) {
+  const routeView = viewName === "history" ? ROUTE_VAULT : ROUTE_FINDER;
+  let hashPath = routeView;
+
+  if (routeView === ROUTE_VAULT && galleryId) {
+    hashPath += `/gallery/${encodeURIComponent(galleryId)}`;
+  }
+
+  if (settingsOpen) {
+    hashPath += "?settings=1";
+  }
+
+  return `#${hashPath}`;
+}
+
+function syncHashWithUi({ replace = false } = {}) {
+  if (isApplyingHashRoute) {
+    return;
+  }
+
+  const nextHash = buildHashRoute({
+    viewName: activeViewName,
+    galleryId: activeViewName === "history" ? activeHistoryGalleryId : null,
+    settingsOpen: !settingsPanel.classList.contains("hidden"),
+  });
+
+  if (window.location.hash === nextHash) {
+    return;
+  }
+
+  if (replace) {
+    window.history.replaceState(null, "", nextHash);
+  } else {
+    window.location.hash = nextHash;
+  }
+}
+
+function applyRouteFromHash() {
+  const route = parseHashRoute();
+  isApplyingHashRoute = true;
+  try {
+    setActiveView(route.viewName, { syncHash: false });
+
+    if (route.viewName === "history") {
+      if (route.galleryId) {
+        const opened = openHistoryGalleryInspector(route.galleryId, {
+          syncHash: false,
+        });
+        if (!opened) {
+          closeHistoryGalleryInspector({ syncHash: false });
+        }
+      } else {
+        closeHistoryGalleryInspector({ syncHash: false });
+      }
+    } else {
+      closeHistoryGalleryInspector({ syncHash: false });
+    }
+
+    if (route.settingsOpen) {
+      openSettingsPanel({ syncHash: false });
+    } else {
+      closeSettingsPanel({ syncHash: false });
+    }
+  } finally {
+    isApplyingHashRoute = false;
+  }
+
+  syncHashWithUi({ replace: true });
+}
+
+function setActiveView(viewName, { syncHash = true } = {}) {
   activeViewName = viewName;
   const isFinder = viewName === "finder";
   finderView.classList.toggle("hidden", !isFinder);
@@ -1029,21 +1361,33 @@ function setActiveView(viewName) {
   if (!isFinder) {
     renderHistory();
   }
+
+  if (syncHash) {
+    syncHashWithUi();
+  }
 }
 
-function openSettingsPanel() {
+function openSettingsPanel({ syncHash = true } = {}) {
   settingsPanel.classList.remove("hidden");
   settingsBackdrop.classList.remove("hidden");
   settingsPanel.setAttribute("aria-hidden", "false");
   applySettingsToUI();
   updateTopTabIndicators();
+
+  if (syncHash) {
+    syncHashWithUi();
+  }
 }
 
-function closeSettingsPanel() {
+function closeSettingsPanel({ syncHash = true } = {}) {
   settingsPanel.classList.add("hidden");
   settingsBackdrop.classList.add("hidden");
   settingsPanel.setAttribute("aria-hidden", "true");
   updateTopTabIndicators();
+
+  if (syncHash) {
+    syncHashWithUi();
+  }
 }
 
 function updateTopTabIndicators() {
@@ -1188,6 +1532,7 @@ function applyGalleryModeUI() {
   galleryDetails.classList.add("hidden");
   selectedGalleryItems.clear();
   currentGalleryHistoryId = null;
+  resetGalleryDoneButtonState();
   updateGallerySelectionList();
 
   if (selectedImage) {
@@ -1206,6 +1551,8 @@ function toggleGallerySelection(pageId, options = {}) {
   if (!selectedItem) {
     return;
   }
+
+  resetGalleryDoneButtonState();
 
   if (!additive && forceChecked === null) {
     selectedGalleryItems.clear();
@@ -1256,7 +1603,7 @@ function updateGallerySelectionList() {
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
-    removeBtn.textContent = "Remove";
+    setButtonIconLabel(removeBtn, "fa-solid fa-xmark", "Remove");
     removeBtn.addEventListener("click", () => {
       selectedGalleryItems.delete(item.pageId);
       updateGallerySelectionList();
@@ -1342,6 +1689,8 @@ function finishCurrentGallery() {
     saveGalleryDraftToHistory();
   }
 
+  const savedEntryId = hadSelection ? currentGalleryHistoryId : null;
+
   selectedGalleryItems.clear();
   currentGalleryHistoryId = null;
   galleryTitleInput.value = "";
@@ -1351,11 +1700,58 @@ function finishCurrentGallery() {
   renderResults(currentResults, { append: false });
   showDetails();
 
-  setStatus(
-    hadSelection
-      ? "Gallery saved. Ready to start a new gallery."
-      : "Gallery reset. Ready to start a new gallery.",
-  );
+  if (savedEntryId) {
+    flashGalleryDoneButton(savedEntryId);
+    setStatus("Gallery saved to Vault. Click Done again to open it.");
+  } else {
+    resetGalleryDoneButtonState();
+    setStatus("Gallery reset. Ready to start a new gallery.");
+  }
+}
+
+function flashGalleryDoneButton(entryId) {
+  resetGalleryDoneButtonState();
+
+  if (!entryId) {
+    return;
+  }
+
+  galleryDoneLinkEntryId = entryId;
+  setButtonIconLabel(galleryDoneBtn, "fa-solid fa-circle-check", "Open Vault");
+  galleryDoneBtn.title = "Open this saved gallery in Vault";
+
+  galleryDoneButtonTimer = window.setTimeout(() => {
+    resetGalleryDoneButtonState();
+  }, 3200);
+}
+
+function resetGalleryDoneButtonState() {
+  if (galleryDoneButtonTimer) {
+    clearTimeout(galleryDoneButtonTimer);
+    galleryDoneButtonTimer = null;
+  }
+
+  galleryDoneLinkEntryId = null;
+  setButtonIconLabel(galleryDoneBtn, "fa-solid fa-check", "Done");
+  galleryDoneBtn.removeAttribute("title");
+}
+
+function openSavedGalleryFromDoneButton() {
+  if (!galleryDoneLinkEntryId) {
+    return false;
+  }
+
+  const targetEntryId = galleryDoneLinkEntryId;
+  resetGalleryDoneButtonState();
+  setActiveView("history");
+  const opened = openHistoryGalleryInspector(targetEntryId);
+  if (!opened) {
+    setStatus("Saved gallery could not be opened. It may have been removed.");
+    return true;
+  }
+
+  setStatus("Opened saved gallery in Vault.");
+  return true;
 }
 
 function upsertHistoryEntry(entry) {
@@ -1439,11 +1835,16 @@ function renderHistory() {
   historySingleList.innerHTML = "";
   historyEmpty.classList.toggle("hidden", historyEntries.length > 0);
   historyList.classList.toggle("hidden", Boolean(activeHistoryGalleryId));
-  historyHeaderSubtitle.classList.toggle(
-    "hidden",
+  historyHeader.classList.toggle(
+    "history-header--gallery",
     Boolean(activeHistoryGalleryId),
   );
+  historyHeaderSubtitle.classList.remove("hidden");
   historyGalleryHeaderBar.classList.toggle("hidden", !activeHistoryGalleryId);
+  historyGalleryInlineEditBtn.classList.toggle(
+    "hidden",
+    !activeHistoryGalleryId,
+  );
   if (activeHistoryGalleryId) {
     historyEmpty.classList.add("hidden");
   }
@@ -1475,9 +1876,6 @@ function renderHistory() {
       infoParts.push(
         `${galleryItems.length} image${galleryItems.length === 1 ? "" : "s"}`,
       );
-      if (entry.galleryDescription) {
-        infoParts.push("has description");
-      }
     } else {
       if (entry.fileName) {
         infoParts.push(entry.fileName);
@@ -1487,44 +1885,11 @@ function renderHistory() {
     infoEl.textContent = infoParts.join(" • ");
 
     if (isGalleryEntry) {
-      const titleField = document.createElement("div");
-      titleField.className = "field-row";
-      const titleLabel = document.createElement("label");
-      titleLabel.textContent = "Gallery title";
-      const titleInput = document.createElement("input");
-      titleInput.type = "text";
-      titleInput.value = entry.galleryTitle || entry.title || "";
-      titleInput.placeholder = "Gallery title";
-      titleField.appendChild(titleLabel);
-      titleField.appendChild(titleInput);
+      const titleEl = document.createElement("h3");
+      titleEl.textContent = entry.galleryTitle || entry.title || "Gallery";
 
-      const descField = document.createElement("div");
-      descField.className = "field-row";
-      const descLabel = document.createElement("label");
-      descLabel.textContent = "Gallery description";
-      const descInput = document.createElement("textarea");
-      descInput.rows = 3;
-      descInput.value = entry.galleryDescription || "";
-      descInput.placeholder = "Gallery description";
-      descField.appendChild(descLabel);
-      descField.appendChild(descInput);
-
-      const persistCardEdits = () => {
-        const nextGalleryTitle = (titleInput.value || "").trim();
-        const nextGalleryDescription = (descInput.value || "").trim();
-        updateHistoryEntryFields(entry.id, {
-          galleryTitle: nextGalleryTitle,
-          galleryDescription: nextGalleryDescription,
-          title: nextGalleryTitle || "Gallery",
-        });
-      };
-
-      titleInput.addEventListener("change", persistCardEdits);
-      descInput.addEventListener("change", persistCardEdits);
-
-      meta.appendChild(titleField);
+      meta.appendChild(titleEl);
       meta.appendChild(infoEl);
-      meta.appendChild(descField);
     } else {
       const titleEl = document.createElement("h3");
       titleEl.textContent = entry.title || "Untitled";
@@ -1594,18 +1959,18 @@ function renderHistory() {
     if (isGalleryEntry) {
       const openBtn = document.createElement("button");
       openBtn.type = "button";
-      openBtn.textContent = "Open gallery";
+      setButtonIconLabel(openBtn, "fa-solid fa-folder-open", "Open gallery");
       openBtn.dataset.openGalleryHistoryId = entry.id;
       actions.appendChild(openBtn);
     } else {
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
-      copyBtn.textContent = "Copy";
+      setButtonIconLabel(copyBtn, "fa-solid fa-copy", "Copy");
       copyBtn.dataset.copyHistoryId = entry.id;
 
       const redownloadBtn = document.createElement("button");
       redownloadBtn.type = "button";
-      redownloadBtn.textContent = "Re-download";
+      setButtonIconLabel(redownloadBtn, "fa-solid fa-rotate", "Re-download");
       redownloadBtn.dataset.redownloadHistoryId = entry.id;
       if (!entry.imageUrl) {
         redownloadBtn.disabled = true;
@@ -1618,7 +1983,11 @@ function renderHistory() {
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
-    removeBtn.textContent = "Remove";
+    if (isGalleryEntry) {
+      setButtonIconLabel(removeBtn, "fa-solid fa-trash", "Delete");
+    } else {
+      setButtonIconLabel(removeBtn, "fa-solid fa-trash", "Remove");
+    }
     removeBtn.dataset.removeHistoryId = entry.id;
 
     actions.appendChild(removeBtn);
@@ -1678,7 +2047,7 @@ function renderHistory() {
 
         downloadingHistoryId = entryId;
         button.disabled = true;
-        button.textContent = "Preparing...";
+        setButtonIconLabel(button, "fa-solid fa-spinner", "Preparing...");
         setStatus("Preparing optimized image download from history...");
 
         try {
@@ -1900,30 +2269,42 @@ function buildAllGalleryCaptions(entry) {
     .join("\n\n");
 }
 
-function openHistoryGalleryInspector(entryId) {
+function openHistoryGalleryInspector(entryId, { syncHash = true } = {}) {
   const entry = historyEntries.find((item) => item.id === entryId);
   if (!entry || entry.type !== "gallery") {
-    return;
+    return false;
   }
 
   activeHistoryGalleryId = entry.id;
+  activeViewName = "history";
   historyList.classList.add("hidden");
   historyEmpty.classList.add("hidden");
-  historyHeaderSubtitle.classList.add("hidden");
+  historyHeader.classList.add("history-header--gallery");
   historyGalleryHeaderBar.classList.remove("hidden");
+  historyGalleryInlineEditBtn.classList.remove("hidden");
   if (typeof activeHistoryGalleryItemIndex !== "number") {
     activeHistoryGalleryItemIndex = 0;
   }
   renderHistoryGalleryInspector(entry);
+  updateTopTabIndicators();
+
+  if (syncHash) {
+    syncHashWithUi();
+  }
+
+  return true;
 }
 
-function closeHistoryGalleryInspector() {
+function closeHistoryGalleryInspector({ syncHash = true } = {}) {
   activeHistoryGalleryId = null;
   activeHistoryGalleryItemIndex = null;
   historyGalleryInspector.classList.add("hidden");
   historyList.classList.remove("hidden");
   historyEmpty.classList.toggle("hidden", historyEntries.length > 0);
+  historyHeader.classList.remove("history-header--gallery");
+  resetHistoryHeaderDefaultText();
   historyHeaderSubtitle.classList.remove("hidden");
+  historyGalleryInlineEditBtn.classList.add("hidden");
   historyGalleryHeaderBar.classList.add("hidden");
   historyGalleryItems.innerHTML = "";
   historyGalleryMeta.textContent = "";
@@ -1936,14 +2317,20 @@ function closeHistoryGalleryInspector() {
   historyGalleryLayoutSelect.value = "normal";
   historyGalleryWidthInput.value = "600";
   historyGalleryWidthRow.classList.add("hidden");
+  closeHistoryHeaderInlineEdit({ restore: true });
+  historyHeaderTitleInput.value = "";
+  historyHeaderSubtitleInput.value = "";
   setHistoryGalleryExportingState(false);
+
+  if (syncHash) {
+    syncHashWithUi();
+  }
 }
 
 function renderHistoryGalleryInspector(entry) {
   const items = getGalleryItems(entry);
   historyGalleryInspector.classList.remove("hidden");
-  const galleryTitle = entry.galleryTitle || entry.title || "Gallery";
-  historyGalleryMeta.textContent = `${galleryTitle} • ${items.length} image${items.length === 1 ? "" : "s"}`;
+  applyHistoryGalleryHeaderText(entry);
   historyGalleryItems.innerHTML = "";
 
   if (!items.length) {
@@ -1957,6 +2344,7 @@ function renderHistoryGalleryInspector(entry) {
 
   historyGalleryCopyAllCaptionsBtn.disabled = false;
   setHistoryGalleryExportingState(exportingHistoryGalleryImages);
+  updateHistoryGalleryExportAllButtonLabel();
   const selectedIndex = Number.isInteger(activeHistoryGalleryItemIndex)
     ? Math.max(0, Math.min(activeHistoryGalleryItemIndex, items.length - 1))
     : 0;
@@ -2203,10 +2591,13 @@ function updateHistoryEntryFields(entryId, updates) {
       (item) => item.id === activeHistoryGalleryId,
     );
     if (currentEntry?.type === "gallery") {
-      const itemsCount = getGalleryItems(currentEntry).length;
-      const galleryTitle =
-        currentEntry.galleryTitle || currentEntry.title || "Gallery";
-      historyGalleryMeta.textContent = `${galleryTitle} • ${itemsCount} image${itemsCount === 1 ? "" : "s"}`;
+      applyHistoryGalleryHeaderText(currentEntry);
+      if (isHistoryHeaderEditing) {
+        historyHeaderTitleInput.value =
+          currentEntry.galleryTitle || currentEntry.title || "";
+        historyHeaderSubtitleInput.value =
+          getHistoryGalleryDescriptionText(currentEntry);
+      }
     }
   }
 }
@@ -2215,9 +2606,10 @@ function setHistoryGalleryExportingState(isExporting) {
   exportingHistoryGalleryImages = isExporting;
   historyGalleryExportAllBtn.disabled = isExporting;
   historyGalleryPrefixExportCheckbox.disabled = isExporting;
-  historyGalleryExportAllBtn.textContent = isExporting
-    ? "Exporting..."
-    : "Export all";
+  historyGalleryInlineEditBtn.disabled = isExporting;
+  historyHeaderTitleInput.disabled = isExporting;
+  historyHeaderSubtitleInput.disabled = isExporting;
+  updateHistoryGalleryExportAllButtonLabel();
 }
 
 function getGallerySlug(entry) {
@@ -2856,18 +3248,26 @@ async function initExportDirectory() {
 function updateDownloadButtonState() {
   if (downloadingImage) {
     downloadImageBtn.disabled = true;
-    downloadImageBtn.textContent = "Preparing...";
+    setButtonIconLabel(downloadImageBtn, "fa-solid fa-spinner", "Preparing...");
     return;
   }
 
   if (!selectedImage) {
     downloadImageBtn.disabled = true;
-    downloadImageBtn.textContent = "Download photo";
+    setButtonIconLabel(
+      downloadImageBtn,
+      "fa-solid fa-download",
+      "Download photo",
+    );
     return;
   }
 
   downloadImageBtn.disabled = false;
-  downloadImageBtn.textContent = "Download photo";
+  setButtonIconLabel(
+    downloadImageBtn,
+    "fa-solid fa-download",
+    "Download photo",
+  );
 }
 
 function isSmallScreen() {
@@ -3035,45 +3435,55 @@ function updateShowMoreVisibility() {
 
   if (!hasResults) {
     showMoreBtn.disabled = true;
-    showMoreBtn.textContent = "Show more";
+    setButtonIconLabel(showMoreBtn, "fa-solid fa-chevron-down", "Show more");
     scanMorePhotoBtn.disabled = true;
-    scanMorePhotoBtn.textContent = "Scan more";
+    setButtonIconLabel(
+      scanMorePhotoBtn,
+      "fa-solid fa-arrows-rotate",
+      "Scan more",
+    );
     return;
   }
 
   if (scanningPhotoDate) {
     if (usingPhotoMode) {
       scanMorePhotoBtn.disabled = true;
-      scanMorePhotoBtn.textContent = "Scanning...";
+      setButtonIconLabel(
+        scanMorePhotoBtn,
+        "fa-solid fa-spinner",
+        "Scanning...",
+      );
     } else {
       showMoreBtn.disabled = true;
-      showMoreBtn.textContent = "Loading...";
+      setButtonIconLabel(showMoreBtn, "fa-solid fa-spinner", "Loading...");
     }
     return;
   }
 
   if (usingPhotoMode) {
     scanMorePhotoBtn.disabled = !nextContinue;
-    scanMorePhotoBtn.textContent = nextContinue
-      ? "Scan more"
-      : "No more to scan";
+    setButtonIconLabel(
+      scanMorePhotoBtn,
+      nextContinue ? "fa-solid fa-arrows-rotate" : "fa-solid fa-ban",
+      nextContinue ? "Scan more" : "No more to scan",
+    );
     return;
   }
 
   if (loadingMore) {
     showMoreBtn.disabled = true;
-    showMoreBtn.textContent = "Loading...";
+    setButtonIconLabel(showMoreBtn, "fa-solid fa-spinner", "Loading...");
     return;
   }
 
   if (nextContinue) {
     showMoreBtn.disabled = false;
-    showMoreBtn.textContent = "Show more";
+    setButtonIconLabel(showMoreBtn, "fa-solid fa-chevron-down", "Show more");
     return;
   }
 
   showMoreBtn.disabled = true;
-  showMoreBtn.textContent = "No more results";
+  setButtonIconLabel(showMoreBtn, "fa-solid fa-ban", "No more results");
 }
 
 function setPhotoDateScanningState(isScanning) {
@@ -3081,7 +3491,11 @@ function setPhotoDateScanningState(isScanning) {
 
   if (searchSubmitBtn) {
     searchSubmitBtn.disabled = isScanning;
-    searchSubmitBtn.textContent = isScanning ? "Scanning..." : "Search";
+    setButtonIconLabel(
+      searchSubmitBtn,
+      isScanning ? "fa-solid fa-spinner" : "fa-solid fa-search",
+      isScanning ? "Scanning..." : "Search",
+    );
   }
 
   sortSelect.disabled = isScanning;
@@ -3115,6 +3529,7 @@ applyGridColumns();
 applyGalleryModeUI();
 historyEntries = loadHistory();
 renderHistory();
-setActiveView("finder");
+window.addEventListener("hashchange", applyRouteFromHash);
+applyRouteFromHash();
 initExportDirectory();
 setStatus("Ready. Search Wikimedia Commons to begin.");

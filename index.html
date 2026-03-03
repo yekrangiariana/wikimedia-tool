@@ -10,6 +10,12 @@
       href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -18,9 +24,18 @@
         <h1>📸 Wikimedia tool</h1>
       </div>
       <div class="topbar-actions">
-        <button id="showFinderViewBtn" type="button">Finder</button>
-        <button id="showHistoryViewBtn" type="button">Vault</button>
-        <button id="openSettingsBtn" type="button">Settings</button>
+        <button id="showFinderViewBtn" type="button">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <span>Finder</span>
+        </button>
+        <button id="showHistoryViewBtn" type="button">
+          <i class="fa-solid fa-box-archive" aria-hidden="true"></i>
+          <span>Vault</span>
+        </button>
+        <button id="openSettingsBtn" type="button">
+          <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          <span>Settings</span>
+        </button>
       </div>
     </header>
 
@@ -36,7 +51,10 @@
               placeholder="e.g. Galápagos giant tortoise"
               required
             />
-            <button type="submit">Search</button>
+            <button type="submit">
+              <i class="fa-solid fa-search" aria-hidden="true"></i>
+              <span>Search</span>
+            </button>
           </div>
 
           <div class="search-filters">
@@ -68,7 +86,8 @@
                   <option value="photo-oldest">Oldest first</option>
                 </select>
                 <button id="scanMorePhotoBtn" type="button" class="hidden">
-                  Scan more
+                  <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                  <span>Scan more</span>
                 </button>
               </div>
             </div>
@@ -81,7 +100,8 @@
 
         <div class="results-footer">
           <button id="showMoreBtn" type="button" class="hidden">
-            Show more
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+            <span>Show more</span>
           </button>
         </div>
       </section>
@@ -107,8 +127,6 @@
             aria-live="polite"
           >
             <div class="generator">
-              <h3>Gallery builder</h3>
-
               <div class="field-row">
                 <label for="galleryTitleInput">Gallery title</label>
                 <input
@@ -139,12 +157,11 @@
               </div>
 
               <div class="button-row">
-                <button id="galleryDoneBtn" type="button">Done</button>
+                <button id="galleryDoneBtn" type="button">
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
+                  <span>Done</span>
+                </button>
               </div>
-
-              <p class="settings-note">
-                Gallery is auto-saved to Vault in the background.
-              </p>
             </div>
           </article>
 
@@ -206,7 +223,11 @@
                 <label for="captionInput">Caption</label>
                 <div class="button-row button-row--tight">
                   <button id="fillDefaultCaptionBtn" type="button">
-                    Default caption
+                    <i
+                      class="fa-solid fa-wand-magic-sparkles"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Default caption</span>
                   </button>
                 </div>
                 <textarea
@@ -222,9 +243,13 @@
               </div>
 
               <div class="button-row">
-                <button id="copyShortcodeBtn" type="button">Copy</button>
+                <button id="copyShortcodeBtn" type="button">
+                  <i class="fa-solid fa-copy" aria-hidden="true"></i>
+                  <span>Copy</span>
+                </button>
                 <button id="downloadImageBtn" type="button">
-                  Download photo
+                  <i class="fa-solid fa-download" aria-hidden="true"></i>
+                  <span>Download photo</span>
                 </button>
               </div>
             </div>
@@ -235,10 +260,33 @@
 
     <main id="historyView" class="panel history-page hidden">
       <div class="history-header">
-        <h2>Content Vault</h2>
+        <div class="history-header-title-row">
+          <h2 id="historyHeaderTitle">Content Vault</h2>
+          <button
+            id="historyGalleryInlineEditBtn"
+            type="button"
+            class="hidden"
+            aria-label="Edit gallery title and description"
+          >
+            <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+            <span>Edit</span>
+          </button>
+        </div>
+        <input
+          id="historyHeaderTitleInput"
+          class="history-header-inline-title hidden"
+          type="text"
+          aria-label="Edit gallery title"
+        />
         <p id="historyHeaderSubtitle">
           Saved assets and shortcodes for quick reuse.
         </p>
+        <textarea
+          id="historyHeaderSubtitleInput"
+          class="history-header-inline-description hidden"
+          rows="2"
+          aria-label="Edit gallery description"
+        ></textarea>
 
         <div
           id="historyGalleryHeaderBar"
@@ -246,27 +294,18 @@
         >
           <p id="historyGalleryMeta" class="settings-note"></p>
           <div class="button-row">
-            <label
-              class="history-gallery-export-option"
-              for="historyGalleryPrefixExportCheckbox"
-            >
-              <input
-                id="historyGalleryPrefixExportCheckbox"
-                type="checkbox"
-                checked
-              />
-              <span class="toggle-switch" aria-hidden="true"></span>
-              <span class="toggle-copy">
-                <span class="toggle-title">Use gallery folder path</span>
-              </span>
-            </label>
+            <button id="historyGalleryCloseBtn" type="button">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              <span>Close</span>
+            </button>
             <button id="historyGalleryExportAllBtn" type="button">
-              Export all
+              <i class="fa-solid fa-file-export" aria-hidden="true"></i>
+              <span>Export all</span>
             </button>
             <button id="historyGalleryCopyAllCaptionsBtn" type="button">
-              Copy all captions
+              <i class="fa-solid fa-clone" aria-hidden="true"></i>
+              <span>Copy captions</span>
             </button>
-            <button id="historyGalleryCloseBtn" type="button">Close</button>
           </div>
         </div>
       </div>
@@ -302,7 +341,11 @@
                       id="historyGalleryFillDefaultCaptionBtn"
                       type="button"
                     >
-                      Default caption
+                      <i
+                        class="fa-solid fa-wand-magic-sparkles"
+                        aria-hidden="true"
+                      ></i>
+                      <span>Default caption</span>
                     </button>
                   </div>
                   <textarea
@@ -349,7 +392,8 @@
 
                 <div class="button-row">
                   <button id="historyGalleryCopyBtn" type="button">
-                    Copy shortcode
+                    <i class="fa-solid fa-copy" aria-hidden="true"></i>
+                    <span>Copy shortcode</span>
                   </button>
                 </div>
               </div>
@@ -377,7 +421,10 @@
     <aside id="settingsPanel" class="settings-panel hidden" aria-hidden="true">
       <div class="settings-header">
         <h2>Settings</h2>
-        <button id="closeSettingsBtn" type="button">Close</button>
+        <button id="closeSettingsBtn" type="button">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          <span>Close</span>
+        </button>
       </div>
 
       <section class="settings-section">
@@ -412,12 +459,31 @@
         </select>
 
         <div class="button-row">
-          <button id="saveSettingsBtn" type="button">Save settings</button>
+          <button id="saveSettingsBtn" type="button">
+            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+            <span>Save settings</span>
+          </button>
         </div>
       </section>
 
       <section class="settings-section export-settings-section">
         <h3>Export</h3>
+
+        <label class="checkbox-inline" for="historyGalleryPrefixExportCheckbox">
+          <input
+            id="historyGalleryPrefixExportCheckbox"
+            type="checkbox"
+            checked
+          />
+          <span class="toggle-switch" aria-hidden="true"></span>
+          <span class="toggle-copy">
+            <span class="toggle-title">Use gallery folder path</span>
+            <span class="toggle-subtitle"
+              >Gallery exports use a folder based on gallery title, and
+              shortcode paths update to match.</span
+            >
+          </span>
+        </label>
 
         <div class="export-settings-grid">
           <div class="settings-field">
@@ -466,8 +532,14 @@
               placeholder="Path label (for your reference)"
               autocomplete="off"
             />
-            <button id="selectExportDirBtn" type="button">Choose</button>
-            <button id="clearExportDirBtn" type="button">Clear</button>
+            <button id="selectExportDirBtn" type="button">
+              <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+              <span>Choose</span>
+            </button>
+            <button id="clearExportDirBtn" type="button">
+              <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+              <span>Clear</span>
+            </button>
           </div>
         </div>
 

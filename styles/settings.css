@@ -99,7 +99,8 @@
   letter-spacing: 0;
   font-size: var(--font-size-xs);
   margin-top: 4px;
-  padding: 9px 10px;
+  min-height: 38px;
+  padding: 8px 12px;
   border: var(--border);
   background: var(--input-bg);
   border-radius: 4px;
@@ -124,7 +125,7 @@
   height: 20px;
   border: var(--border);
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: #c7c7c7;
   transition: background-color 120ms ease;
 }
 
@@ -161,7 +162,7 @@
 }
 
 .settings-section .checkbox-inline input:checked + .toggle-switch {
-  background: #e8e7e4;
+  background: var(--success);
 }
 
 .settings-section .checkbox-inline input:checked + .toggle-switch::after {
@@ -224,6 +225,6 @@
 
 .export-support-note {
   margin: 0;
-  font-size: var(--font-size-xxs);
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
 }

@@ -16,11 +16,61 @@
   text-transform: uppercase;
 }
 
+.history-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-header-title-row #historyGalleryInlineEditBtn {
+  margin-left: auto;
+}
+
+.history-header-inline-title,
+.history-header-inline-description {
+  margin-top: 6px;
+}
+
+.history-header-inline-description {
+  min-height: 68px;
+}
+
 .history-header p {
   margin: 6px 0 0;
   color: var(--text-light);
   font-size: var(--font-size-xs);
   line-height: 1.45;
+}
+
+.history-header--gallery {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+}
+
+.history-header--gallery .history-header-title-row,
+.history-header--gallery #historyHeaderTitleInput,
+.history-header--gallery #historyHeaderSubtitle,
+.history-header--gallery #historyHeaderSubtitleInput {
+  grid-column: 1;
+}
+
+.history-header--gallery .history-gallery-header-bar {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  margin: 0;
+  align-self: start;
+  width: 100%;
+}
+
+.history-header--gallery .history-gallery-header-bar .settings-note {
+  display: none;
+}
+
+.history-header--gallery .history-gallery-header-bar .button-row {
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .history-gallery-header-bar {
@@ -53,8 +103,8 @@
   align-items: center;
   gap: 10px;
   margin: 0;
-  min-height: 36px;
-  padding: 7px 10px;
+  min-height: 38px;
+  padding: 8px 12px;
   border: var(--border);
   border-radius: 4px;
   background: var(--input-bg);
@@ -83,7 +133,7 @@
   height: 20px;
   border: var(--border);
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: #c7c7c7;
   transition: background-color 120ms ease;
 }
 
@@ -113,7 +163,7 @@
 }
 
 .history-gallery-export-option input:checked + .toggle-switch {
-  background: #e8e7e4;
+  background: var(--success);
 }
 
 .history-gallery-export-option input:checked + .toggle-switch::after {
@@ -224,7 +274,6 @@
 .history-gallery-workspace {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border: var(--border-light);
   min-height: 420px;
 }
 

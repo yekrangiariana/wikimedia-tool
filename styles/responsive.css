@@ -121,6 +121,17 @@
     padding: 10px;
   }
 
+  .history-header--gallery {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+  }
+
+  .history-header--gallery .history-gallery-header-bar {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 0;
+  }
+
   .history-gallery-header-bar .button-row {
     justify-content: flex-start;
   }
