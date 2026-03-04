@@ -968,10 +968,7 @@ async function runSearch({ append }) {
     const batch = await fetchSearchBatch(append ? nextContinue : null, {
       signal: abortController.signal,
     });
-    if (
-      abortController.signal.aborted ||
-      requestId !== activeSearchRequestId
-    ) {
+    if (abortController.signal.aborted || requestId !== activeSearchRequestId) {
       throw new DOMException("Search request superseded", "AbortError");
     }
 
@@ -982,7 +979,10 @@ async function runSearch({ append }) {
 
     if (!append) {
       currentResults = parsedResults;
-      currentResults = sortResultsBySelectedMode(currentResults, activeSortMode);
+      currentResults = sortResultsBySelectedMode(
+        currentResults,
+        activeSortMode,
+      );
       renderResults(currentResults, { append: false });
 
       if (!currentResults.length) {
@@ -998,7 +998,10 @@ async function runSearch({ append }) {
         (item) => !existingIds.has(item.pageId),
       );
       currentResults = [...currentResults, ...uniqueNewResults];
-      currentResults = sortResultsBySelectedMode(currentResults, activeSortMode);
+      currentResults = sortResultsBySelectedMode(
+        currentResults,
+        activeSortMode,
+      );
       renderResults(currentResults, { append: false });
     }
 
