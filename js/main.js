@@ -3298,18 +3298,9 @@ function renderHistory() {
     meta.className = "history-meta";
 
     const infoEl = document.createElement("p");
-    const infoParts = [];
     if (isGalleryEntry) {
-      infoParts.push(
-        `${galleryItems.length} image${galleryItems.length === 1 ? "" : "s"}`,
-      );
-    } else {
-      if (entry.fileName) {
-        infoParts.push(entry.fileName);
-      }
-      infoParts.push("previously viewed");
+      infoEl.textContent = `${galleryItems.length} image${galleryItems.length === 1 ? "" : "s"}`;
     }
-    infoEl.textContent = infoParts.join(" • ");
 
     if (isGalleryEntry) {
       const titleEl = document.createElement("h3");

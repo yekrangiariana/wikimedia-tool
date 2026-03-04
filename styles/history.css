@@ -282,10 +282,10 @@
 .history-item {
   border: var(--border-faint);
   background: var(--surface);
-  padding: 12px;
+  padding: 10px;
   display: grid;
   grid-template-columns: 120px 1fr;
-  gap: 14px;
+  gap: 10px;
   align-items: start;
 }
 
@@ -348,22 +348,16 @@
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
     "title actions"
-    "meta meta"
     "layout layout"
     "width width"
     "shortcode shortcode";
   column-gap: 10px;
-  row-gap: 8px;
+  row-gap: 6px;
   align-items: start;
 }
 
 .history-item:not(.history-gallery-entry) .history-meta > h3 {
   grid-area: title;
-  margin: 0;
-}
-
-.history-item:not(.history-gallery-entry) .history-meta > p {
-  grid-area: meta;
   margin: 0;
 }
 
@@ -417,12 +411,12 @@
 }
 
 .history-item:not(.history-gallery-entry) {
-  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-columns: 92px minmax(0, 1fr);
 }
 
 .history-item:not(.history-gallery-entry) img {
-  width: 110px;
-  height: 110px;
+  width: 92px;
+  height: 92px;
 }
 
 .history-gallery-entry .field-row {
