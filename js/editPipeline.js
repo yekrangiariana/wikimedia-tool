@@ -198,7 +198,9 @@ function normalizeSplitReframeOperation(step) {
           x: Number(offset?.x),
           y: Number(offset?.y),
         }))
-        .filter((offset) => Number.isFinite(offset.x) && Number.isFinite(offset.y))
+        .filter(
+          (offset) => Number.isFinite(offset.x) && Number.isFinite(offset.y),
+        )
     : [];
 
   if (!offsets.length) {

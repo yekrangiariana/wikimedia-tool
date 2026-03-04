@@ -212,9 +212,15 @@ const editorSplitReframeControls = document.getElementById(
   "editorSplitReframeControls",
 );
 const editorSplitMoveUpBtn = document.getElementById("editorSplitMoveUpBtn");
-const editorSplitMoveDownBtn = document.getElementById("editorSplitMoveDownBtn");
-const editorSplitMoveLeftBtn = document.getElementById("editorSplitMoveLeftBtn");
-const editorSplitMoveRightBtn = document.getElementById("editorSplitMoveRightBtn");
+const editorSplitMoveDownBtn = document.getElementById(
+  "editorSplitMoveDownBtn",
+);
+const editorSplitMoveLeftBtn = document.getElementById(
+  "editorSplitMoveLeftBtn",
+);
+const editorSplitMoveRightBtn = document.getElementById(
+  "editorSplitMoveRightBtn",
+);
 const editorSplitZoomInBtn = document.getElementById("editorSplitZoomInBtn");
 const editorSplitZoomOutBtn = document.getElementById("editorSplitZoomOutBtn");
 const editorAspectRatioSelect = document.getElementById(
@@ -253,11 +259,15 @@ const galleryDoneBtn = document.getElementById("galleryDoneBtn");
 
 const splitDetails = document.getElementById("splitDetails");
 const splitLayoutSelect = document.getElementById("splitLayoutSelect");
-const splitCanvasPresetSelect = document.getElementById("splitCanvasPresetSelect");
+const splitCanvasPresetSelect = document.getElementById(
+  "splitCanvasPresetSelect",
+);
 const splitSelectionList = document.getElementById("splitSelectionList");
 const splitSelectionEmpty = document.getElementById("splitSelectionEmpty");
 const splitSelectionCount = document.getElementById("splitSelectionCount");
-const splitOutputLayoutSelect = document.getElementById("splitOutputLayoutSelect");
+const splitOutputLayoutSelect = document.getElementById(
+  "splitOutputLayoutSelect",
+);
 const splitWidthRow = document.getElementById("splitWidthRow");
 const splitCustomWidth = document.getElementById("splitCustomWidth");
 const splitCaptionInput = document.getElementById("splitCaptionInput");
@@ -672,7 +682,10 @@ splitOutputLayoutSelect.addEventListener("change", () => {
 });
 
 function syncSplitPresetFromDimensions() {
-  if (!splitCanvasPresetSelect || !SPLIT_CANVAS_PRESETS[splitCanvasPresetSelect.value]) {
+  if (
+    !splitCanvasPresetSelect ||
+    !SPLIT_CANVAS_PRESETS[splitCanvasPresetSelect.value]
+  ) {
     splitCanvasPresetSelect.value = "16-9";
   }
 }
@@ -2398,7 +2411,9 @@ async function openSingleVaultEditor(entryId) {
   };
   const finderEditKey = buildImageEditKey(editSource, "finder");
   const editKey =
-    entry.isSplitScreen && typeof entry.splitEditKey === "string" && entry.splitEditKey
+    entry.isSplitScreen &&
+    typeof entry.splitEditKey === "string" &&
+    entry.splitEditKey
       ? entry.splitEditKey
       : finderEditKey;
   const existingEdit = getImageEditState(editKey);
@@ -3309,7 +3324,10 @@ function updateSplitWidthVisibility() {
   if (!splitWidthRow || !splitOutputLayoutSelect) {
     return;
   }
-  splitWidthRow.classList.toggle("hidden", splitOutputLayoutSelect.value !== "custom");
+  splitWidthRow.classList.toggle(
+    "hidden",
+    splitOutputLayoutSelect.value !== "custom",
+  );
 }
 
 function buildSplitFileName(images) {
@@ -3318,7 +3336,7 @@ function buildSplitFileName(images) {
   }
 
   // Extract clean names from each image
-  const names = images.map(img => {
+  const names = images.map((img) => {
     const title = img.title || img.fileName || "image";
     // Remove "File:" prefix if present
     const cleaned = title.replace(/^File:/i, "").trim();
@@ -3351,7 +3369,7 @@ function buildSplitAttribution(images) {
     const attribution = hasKnownAuthor
       ? `${position}: Photo by ${author} © ${license}`
       : `${position}: © ${license}`;
-    
+
     attributions.push(attribution);
   });
 
@@ -3383,10 +3401,10 @@ function regenerateSplitOutputs() {
   const layout = splitOutputLayoutSelect?.value || "normal";
   const customWidth = splitCustomWidth?.value || "600";
   const rawCaption = splitCaptionInput?.value || "";
-  
+
   // Build proper caption with attribution
   const caption = buildSplitCaption(rawCaption, selectedItems);
-  
+
   // Generate stable filename based on source images
   const baseFileName = buildSplitFileName(selectedItems);
   const fileName = `${baseFileName}.${getActiveExportFormat()}`;
@@ -3397,7 +3415,8 @@ function regenerateSplitOutputs() {
 
   let shortcode = "";
   const widthValue = Number.parseInt(customWidth, 10);
-  const safeWidth = Number.isFinite(widthValue) && widthValue > 0 ? widthValue : 600;
+  const safeWidth =
+    Number.isFinite(widthValue) && widthValue > 0 ? widthValue : 600;
 
   switch (layout) {
     case "large":
@@ -3436,14 +3455,14 @@ async function handleSplitCombine() {
 
   setStatus("Creating split screen canvas...");
   showProgressNotice("Loading images...");
-  
+
   try {
     // Create a combined canvas with proper cropping
     const combinedCanvas = await createSplitCanvas(
       selectedItems,
       canvasWidth,
       canvasHeight,
-      maxSplitCount
+      maxSplitCount,
     );
 
     const timestamp = Date.now();
@@ -3452,7 +3471,8 @@ async function handleSplitCombine() {
 
     // Generate stable filename based on source images
     const exportFormat = getActiveExportFormat();
-    const exportExt = exportFormat === "jpg" ? "jpg" : exportFormat === "png" ? "png" : "webp";
+    const exportExt =
+      exportFormat === "jpg" ? "jpg" : exportFormat === "png" ? "png" : "webp";
     const baseFileName = buildSplitFileName(selectedItems);
     const fileName = `${baseFileName}.${exportExt}`;
 
@@ -3487,16 +3507,24 @@ async function handleSplitCombine() {
     updateProgressNotice("Saving split image...");
 
     // Get export format from settings
-    const exportMimeType = exportFormat === "jpg" ? "image/jpeg" : 
-                          exportFormat === "png" ? "image/png" : "image/webp";
-    const exportQuality = exportFormat === "jpg" ? 0.92 : 0.90;
+    const exportMimeType =
+      exportFormat === "jpg"
+        ? "image/jpeg"
+        : exportFormat === "png"
+          ? "image/png"
+          : "image/webp";
+    const exportQuality = exportFormat === "jpg" ? 0.92 : 0.9;
 
     // Convert canvas to blob with proper format
     const blob = await new Promise((resolve, reject) => {
-      combinedCanvas.toBlob((b) => {
-        if (b) resolve(b);
-        else reject(new Error("Failed to create canvas blob"));
-      }, exportMimeType, exportQuality);
+      combinedCanvas.toBlob(
+        (b) => {
+          if (b) resolve(b);
+          else reject(new Error("Failed to create canvas blob"));
+        },
+        exportMimeType,
+        exportQuality,
+      );
     });
 
     await savePreviewBlobToCache(editKey, blob);
@@ -3529,7 +3557,12 @@ async function handleSplitCombine() {
   }
 }
 
-async function createSplitCanvas(images, canvasWidth, canvasHeight, splitCount) {
+async function createSplitCanvas(
+  images,
+  canvasWidth,
+  canvasHeight,
+  splitCount,
+) {
   const canvas = document.createElement("canvas");
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
@@ -3548,7 +3581,9 @@ async function createSplitCanvas(images, canvasWidth, canvasHeight, splitCount) 
 
   // Load images in parallel for better performance
   const loadedImages = await Promise.all(
-    images.map(image => loadImageElement(image.imageUrl || image.thumbnailUrl))
+    images.map((image) =>
+      loadImageElement(image.imageUrl || image.thumbnailUrl),
+    ),
   );
 
   // Draw each image in its section with proper cropping
@@ -3560,7 +3595,10 @@ async function createSplitCanvas(images, canvasWidth, canvasHeight, splitCount) 
     const targetAspect = sectionWidth / canvasHeight;
     const imgAspect = img.width / img.height;
 
-    let srcX = 0, srcY = 0, srcWidth = img.width, srcHeight = img.height;
+    let srcX = 0,
+      srcY = 0,
+      srcWidth = img.width,
+      srcHeight = img.height;
 
     if (imgAspect > targetAspect) {
       // Image is wider - crop sides (center crop horizontally)
@@ -3575,8 +3613,14 @@ async function createSplitCanvas(images, canvasWidth, canvasHeight, splitCount) 
     // Draw cropped image to fill the exact section
     ctx.drawImage(
       img,
-      srcX, srcY, srcWidth, srcHeight,
-      sectionX, 0, sectionWidth, canvasHeight
+      srcX,
+      srcY,
+      srcWidth,
+      srcHeight,
+      sectionX,
+      0,
+      sectionWidth,
+      canvasHeight,
     );
   }
 
@@ -3934,8 +3978,7 @@ function saveToHistory({
       canvasHeight: Number.isFinite(Number(canvasHeight))
         ? Number(canvasHeight)
         : null,
-      splitEditKey:
-        typeof splitEditKey === "string" ? splitEditKey.trim() : "",
+      splitEditKey: typeof splitEditKey === "string" ? splitEditKey.trim() : "",
       downloaded: Boolean(downloaded),
       copiedAt: nowIso,
     };
@@ -5785,14 +5828,15 @@ function sanitizeHistoryEntries(parsed) {
             .filter((splitItem) => splitItem && typeof splitItem === "object")
             .map((splitItem, splitIndex) => ({
               pageId: normalizePageId(splitItem.pageId),
-              title:
-                typeof splitItem.title === "string" ? splitItem.title : "",
+              title: typeof splitItem.title === "string" ? splitItem.title : "",
               thumbnailUrl:
                 typeof splitItem.thumbnailUrl === "string"
                   ? splitItem.thumbnailUrl
                   : "",
               imageUrl:
-                typeof splitItem.imageUrl === "string" ? splitItem.imageUrl : "",
+                typeof splitItem.imageUrl === "string"
+                  ? splitItem.imageUrl
+                  : "",
               index: Number.isInteger(Number(splitItem.index))
                 ? Number(splitItem.index)
                 : splitIndex,

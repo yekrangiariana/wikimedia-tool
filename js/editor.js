@@ -521,7 +521,11 @@ export function createImageEditorController({
         !backgroundMode &&
         !colorAdjustMode &&
         !eraserMode;
-      toggleClassIfChanged(splitReframeControlsEl, "hidden", !showSplitControls);
+      toggleClassIfChanged(
+        splitReframeControlsEl,
+        "hidden",
+        !showSplitControls,
+      );
       const controlsDisabled = !showSplitControls || !canUseSplitReframe();
       [
         splitMoveUpBtn,
@@ -1071,11 +1075,7 @@ export function createImageEditorController({
       }
 
       const panelScale = safeScales[panelIndex] || 1;
-      const scaledSrcWidth = clamp(
-        crop.srcWidth / panelScale,
-        1,
-        source.width,
-      );
+      const scaledSrcWidth = clamp(crop.srcWidth / panelScale, 1, source.width);
       const scaledSrcHeight = clamp(
         crop.srcHeight / panelScale,
         1,
@@ -1089,8 +1089,16 @@ export function createImageEditorController({
       const rawOffset = safeOffsets[panelIndex] || { x: 0, y: 0 };
       const offsetX = clamp(rawOffset.x, -maxOffsetX, maxOffsetX);
       const offsetY = clamp(rawOffset.y, -maxOffsetY, maxOffsetY);
-      const srcX = clamp(baseCenterX + offsetX, 0, source.width - scaledSrcWidth);
-      const srcY = clamp(baseCenterY + offsetY, 0, source.height - scaledSrcHeight);
+      const srcX = clamp(
+        baseCenterX + offsetX,
+        0,
+        source.width - scaledSrcWidth,
+      );
+      const srcY = clamp(
+        baseCenterY + offsetY,
+        0,
+        source.height - scaledSrcHeight,
+      );
 
       nextContext.drawImage(
         source,
@@ -1135,7 +1143,10 @@ export function createImageEditorController({
     );
 
     splitSourceImages = loadedSources;
-    const splitState = getSplitReframeStateFromOperations(operations, panelCount);
+    const splitState = getSplitReframeStateFromOperations(
+      operations,
+      panelCount,
+    );
     splitOffsets = splitState.offsets;
     splitScales = splitState.scales;
     splitReframeEnabled = true;
@@ -1704,7 +1715,9 @@ export function createImageEditorController({
   function clampSplitOffsetForPanel(panelIndex, offset, scaleValue) {
     const panelCount = getSplitPanelCount();
     const { width, height } = getSplitCanvasDimensions();
-    const panelRect = buildSplitPanelRects(width, height, panelCount)[panelIndex];
+    const panelRect = buildSplitPanelRects(width, height, panelCount)[
+      panelIndex
+    ];
     const crop = getSplitSourceCropForPanel(panelIndex, panelRect);
     const source = splitSourceImages[panelIndex];
     if (!crop || !source) {
@@ -1713,7 +1726,11 @@ export function createImageEditorController({
 
     const panelScale = clampSplitScale(scaleValue);
     const scaledSrcWidth = clamp(crop.srcWidth / panelScale, 1, source.width);
-    const scaledSrcHeight = clamp(crop.srcHeight / panelScale, 1, source.height);
+    const scaledSrcHeight = clamp(
+      crop.srcHeight / panelScale,
+      1,
+      source.height,
+    );
     const maxOffsetX = Math.max(0, (source.width - scaledSrcWidth) / 2);
     const maxOffsetY = Math.max(0, (source.height - scaledSrcHeight) / 2);
 
@@ -1726,7 +1743,9 @@ export function createImageEditorController({
   async function commitSplitReframeState() {
     operationHistory = getOperationsWithoutSplitReframe(operationHistory);
     if (!isDefaultSplitReframeState(splitOffsets, splitScales)) {
-      operationHistory.push(buildSplitReframeOperation(splitOffsets, splitScales));
+      operationHistory.push(
+        buildSplitReframeOperation(splitOffsets, splitScales),
+      );
     }
 
     redoHistory = [];
@@ -1736,7 +1755,10 @@ export function createImageEditorController({
   }
 
   function applySplitReframeStateToCanvas() {
-    const splitCanvas = composeSplitCanvasFromOffsets(splitOffsets, splitScales);
+    const splitCanvas = composeSplitCanvasFromOffsets(
+      splitOffsets,
+      splitScales,
+    );
     if (splitCanvas) {
       workingCanvas = splitCanvas;
     }
@@ -1779,7 +1801,9 @@ export function createImageEditorController({
     const nextScales = normalizeSplitScales(splitScales, panelCount);
     const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
 
-    nextScales[panelIndex] = clampSplitScale(nextScales[panelIndex] * zoomFactor);
+    nextScales[panelIndex] = clampSplitScale(
+      nextScales[panelIndex] * zoomFactor,
+    );
     nextOffsets[panelIndex] = clampSplitOffsetForPanel(
       panelIndex,
       nextOffsets[panelIndex],
@@ -1860,8 +1884,14 @@ export function createImageEditorController({
       1,
       splitSourceImages[splitDragPanelIndex]?.height || crop.srcHeight,
     );
-    const maxOffsetX = Math.max(0, (splitSourceImages[splitDragPanelIndex].width - scaledSrcWidth) / 2);
-    const maxOffsetY = Math.max(0, (splitSourceImages[splitDragPanelIndex].height - scaledSrcHeight) / 2);
+    const maxOffsetX = Math.max(
+      0,
+      (splitSourceImages[splitDragPanelIndex].width - scaledSrcWidth) / 2,
+    );
+    const maxOffsetY = Math.max(
+      0,
+      (splitSourceImages[splitDragPanelIndex].height - scaledSrcHeight) / 2,
+    );
 
     const dx = imagePoint.x - splitDragStartImagePoint.x;
     const dy = imagePoint.y - splitDragStartImagePoint.y;
@@ -1870,16 +1900,8 @@ export function createImageEditorController({
     const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
 
     nextOffsets[splitDragPanelIndex] = {
-      x: clamp(
-        splitDragStartOffset.x - dx * scaleX,
-        -maxOffsetX,
-        maxOffsetX,
-      ),
-      y: clamp(
-        splitDragStartOffset.y - dy * scaleY,
-        -maxOffsetY,
-        maxOffsetY,
-      ),
+      x: clamp(splitDragStartOffset.x - dx * scaleX, -maxOffsetX, maxOffsetX),
+      y: clamp(splitDragStartOffset.y - dy * scaleY, -maxOffsetY, maxOffsetY),
     };
 
     splitOffsets = nextOffsets;
@@ -1932,7 +1954,9 @@ export function createImageEditorController({
 
     const panelCount = getSplitPanelCount();
     const { width, height } = getSplitCanvasDimensions();
-    const panelRect = buildSplitPanelRects(width, height, panelCount)[panelIndex];
+    const panelRect = buildSplitPanelRects(width, height, panelCount)[
+      panelIndex
+    ];
     const crop = getSplitSourceCropForPanel(panelIndex, panelRect);
     const source = splitSourceImages[panelIndex];
     if (!crop || !source) {
@@ -1941,10 +1965,20 @@ export function createImageEditorController({
 
     const zoomFactor = event.deltaY < 0 ? 1.08 : 1 / 1.08;
     const nextScales = normalizeSplitScales(splitScales, panelCount);
-    nextScales[panelIndex] = clampSplitScale(nextScales[panelIndex] * zoomFactor);
+    nextScales[panelIndex] = clampSplitScale(
+      nextScales[panelIndex] * zoomFactor,
+    );
 
-    const scaledSrcWidth = clamp(crop.srcWidth / nextScales[panelIndex], 1, source.width);
-    const scaledSrcHeight = clamp(crop.srcHeight / nextScales[panelIndex], 1, source.height);
+    const scaledSrcWidth = clamp(
+      crop.srcWidth / nextScales[panelIndex],
+      1,
+      source.width,
+    );
+    const scaledSrcHeight = clamp(
+      crop.srcHeight / nextScales[panelIndex],
+      1,
+      source.height,
+    );
     const maxOffsetX = Math.max(0, (source.width - scaledSrcWidth) / 2);
     const maxOffsetY = Math.max(0, (source.height - scaledSrcHeight) / 2);
 
@@ -1968,7 +2002,10 @@ export function createImageEditorController({
       return;
     }
 
-    splitTouchPointers.set(event.pointerId, clampPointToRenderBox(pointerToCanvasPoint(event)));
+    splitTouchPointers.set(
+      event.pointerId,
+      clampPointToRenderBox(pointerToCanvasPoint(event)),
+    );
   }
 
   function removeSplitTouchPointer(event) {
@@ -2068,7 +2105,9 @@ export function createImageEditorController({
     const panelCount = getSplitPanelCount();
     const nextScales = normalizeSplitScales(splitScales, panelCount);
     const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
-    nextScales[panelIndex] = clampSplitScale(splitPinchStart.scale * scaleRatio);
+    nextScales[panelIndex] = clampSplitScale(
+      splitPinchStart.scale * scaleRatio,
+    );
     nextOffsets[panelIndex] = clampSplitOffsetForPanel(
       panelIndex,
       nextOffsets[panelIndex],
@@ -2673,7 +2712,10 @@ export function createImageEditorController({
   async function rebuildWorkingFromOperations(operations) {
     if (splitReframeEnabled && splitSourceImages.length > 0) {
       const panelCount = getSplitPanelCount();
-      const splitState = getSplitReframeStateFromOperations(operations, panelCount);
+      const splitState = getSplitReframeStateFromOperations(
+        operations,
+        panelCount,
+      );
       splitOffsets = splitState.offsets;
       splitScales = splitState.scales;
       const splitBaseCanvas = composeSplitCanvasFromOffsets(
@@ -2975,7 +3017,9 @@ export function createImageEditorController({
 
     const sessionId = ++openSessionId;
     const sourceUrl = meta.startImageUrl || meta.imageUrl || "";
-    const loadedSourceImage = hasCanvasSource ? null : await loadImage(sourceUrl);
+    const loadedSourceImage = hasCanvasSource
+      ? null
+      : await loadImage(sourceUrl);
     const nextWorking = hasCanvasSource
       ? cloneCanvas(meta.sourceCanvas)
       : createCanvasFromImage(loadedSourceImage);
@@ -3014,7 +3058,9 @@ export function createImageEditorController({
     redoHistory = [];
     hasEdits =
       operationHistory.length > 0 ||
-      (Boolean(sourceUrl) && Boolean(meta.imageUrl) && sourceUrl !== meta.imageUrl);
+      (Boolean(sourceUrl) &&
+        Boolean(meta.imageUrl) &&
+        sourceUrl !== meta.imageUrl);
     cropMode = false;
     backgroundMode = false;
     colorAdjustMode = false;
@@ -3053,8 +3099,11 @@ export function createImageEditorController({
     render();
 
     if (splitReframeEnabled) {
-      const panelHint = getSplitPanelCount() === 2 ? "Left/Right" : "Left/Center/Right";
-      notify(`Split reframe ready. Drag inside ${panelHint} panels to reposition, and use mouse wheel to zoom a panel.`);
+      const panelHint =
+        getSplitPanelCount() === 2 ? "Left/Right" : "Left/Center/Right";
+      notify(
+        `Split reframe ready. Drag inside ${panelHint} panels to reposition, and use mouse wheel to zoom a panel.`,
+      );
     }
   }
 
@@ -3222,9 +3271,13 @@ export function createImageEditorController({
   overlayEl.addEventListener("pointerup", handlePointerUp);
   overlayEl.addEventListener("pointercancel", handlePointerUp);
   overlayEl.addEventListener("pointerleave", handlePointerLeave);
-  overlayEl.addEventListener("wheel", (event) => {
-    void handleSplitReframeWheel(event);
-  }, { passive: false });
+  overlayEl.addEventListener(
+    "wheel",
+    (event) => {
+      void handleSplitReframeWheel(event);
+    },
+    { passive: false },
+  );
 
   const splitNudgeStep = 32;
   splitMoveUpBtn?.addEventListener("click", () => {
