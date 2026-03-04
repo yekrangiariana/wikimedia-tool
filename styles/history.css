@@ -367,7 +367,9 @@
   margin: 0;
 }
 
-.history-item:not(.history-gallery-entry) .history-meta > .field-row:nth-of-type(1) {
+.history-item:not(.history-gallery-entry)
+  .history-meta
+  > .field-row:nth-of-type(1) {
   grid-area: layout;
   margin: 0;
   display: grid;
@@ -376,7 +378,9 @@
   align-items: center;
 }
 
-.history-item:not(.history-gallery-entry) .history-meta > .field-row:nth-of-type(2) {
+.history-item:not(.history-gallery-entry)
+  .history-meta
+  > .field-row:nth-of-type(2) {
   grid-area: width;
   margin: 0;
   display: grid;

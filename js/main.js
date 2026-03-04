@@ -180,6 +180,8 @@ const editorWhiteBalanceValue = document.getElementById(
 );
 const editorSaturationInput = document.getElementById("editorSaturationInput");
 const editorSaturationValue = document.getElementById("editorSaturationValue");
+const editorBlackpointInput = document.getElementById("editorBlackpointInput");
+const editorBlackpointValue = document.getElementById("editorBlackpointValue");
 const editorEraserContent = document.getElementById("editorEraserContent");
 const editorEraserSizeInput = document.getElementById("editorEraserSizeInput");
 const editorEraserSizeValue = document.getElementById("editorEraserSizeValue");
@@ -341,7 +343,9 @@ function initializeEditorBackgroundPicker() {
   }
 
   editorBackgroundColorInput.addEventListener("input", () => {
-    const normalized = normalizeEditorHexColor(editorBackgroundColorInput.value);
+    const normalized = normalizeEditorHexColor(
+      editorBackgroundColorInput.value,
+    );
     if (!normalized) {
       return;
     }
@@ -430,6 +434,8 @@ const imageEditor = createImageEditorController({
   whiteBalanceValueEl: editorWhiteBalanceValue,
   saturationInput: editorSaturationInput,
   saturationValueEl: editorSaturationValue,
+  blackpointInput: editorBlackpointInput,
+  blackpointValueEl: editorBlackpointValue,
   eraserContentEl: editorEraserContent,
   eraserSizeInput: editorEraserSizeInput,
   eraserSizeValueEl: editorEraserSizeValue,
@@ -3125,7 +3131,10 @@ function renderHistory() {
     !activeHistoryGalleryId,
   );
   if (historySectionToggle) {
-    historySectionToggle.classList.toggle("hidden", Boolean(activeHistoryGalleryId));
+    historySectionToggle.classList.toggle(
+      "hidden",
+      Boolean(activeHistoryGalleryId),
+    );
   }
   if (activeHistoryGalleryId) {
     historyEmpty.classList.add("hidden");
@@ -3370,11 +3379,14 @@ function renderHistory() {
   );
 
   if (!hasAnyEntries) {
-    historyEmpty.textContent = "Your vault is empty. Copy or download an item to save it here.";
+    historyEmpty.textContent =
+      "Your vault is empty. Copy or download an item to save it here.";
   } else if (showsGallerySection) {
-    historyEmpty.textContent = "No galleries yet. Save a gallery from Finder to see it here.";
+    historyEmpty.textContent =
+      "No galleries yet. Save a gallery from Finder to see it here.";
   } else {
-    historyEmpty.textContent = "No previously used items yet. Copy or download an item to save it here.";
+    historyEmpty.textContent =
+      "No previously used items yet. Copy or download an item to save it here.";
   }
 
   updateHistorySectionToggleUi();

@@ -172,6 +172,7 @@ function normalizeColorAdjustOperation(step) {
   const rawBrightness = Number(step?.brightness);
   const rawWhiteBalance = Number(step?.whiteBalance);
   const rawSaturation = Number(step?.saturation);
+  const rawBlackpoint = Number(step?.blackpoint);
 
   return {
     type: "colorAdjust",
@@ -183,6 +184,9 @@ function normalizeColorAdjustOperation(step) {
       : 0,
     saturation: Number.isFinite(rawSaturation)
       ? clamp(rawSaturation, -100, 100)
+      : 0,
+    blackpoint: Number.isFinite(rawBlackpoint)
+      ? clamp(rawBlackpoint, -100, 100)
       : 0,
   };
 }
@@ -202,10 +206,12 @@ function applyColorAdjustOperation(sourceCanvas, operation) {
   const brightness = clamp(Number(operation?.brightness) || 0, -100, 100);
   const whiteBalance = clamp(Number(operation?.whiteBalance) || 0, -100, 100);
   const saturation = clamp(Number(operation?.saturation) || 0, -100, 100);
+  const blackpoint = clamp(Number(operation?.blackpoint) || 0, -100, 100);
 
   const brightnessShift = (brightness / 100) * 255;
   const saturationFactor = 1 + saturation / 100;
   const whiteBalanceShift = (whiteBalance / 100) * 64;
+  const blackpointShift = (blackpoint / 100) * 90;
 
   for (let index = 0; index < pixels.length; index += 4) {
     let red = pixels[index];
@@ -224,6 +230,11 @@ function applyColorAdjustOperation(sourceCanvas, operation) {
     red += whiteBalanceShift;
     green += whiteBalanceShift * 0.12;
     blue -= whiteBalanceShift;
+
+    const shadowWeight = 1 - luminance / 255;
+    red -= blackpointShift * shadowWeight;
+    green -= blackpointShift * shadowWeight;
+    blue -= blackpointShift * shadowWeight;
 
     pixels[index] = clamp(Math.round(red), 0, 255);
     pixels[index + 1] = clamp(Math.round(green), 0, 255);
@@ -281,7 +292,7 @@ function applyEraseOperation(sourceCanvas, operation) {
  * This is the canonical operation schema used by the whole app:
  * - { type: "cutout" }
  * - { type: "background", color }
- * - { type: "colorAdjust", brightness, whiteBalance, saturation }
+ * - { type: "colorAdjust", brightness, whiteBalance, saturation, blackpoint }
  * - { type: "crop", x, y, width, height }
  *
  * Any future editor feature should add a new operation type here first,

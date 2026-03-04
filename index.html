@@ -459,19 +459,11 @@
       </section>
 
       <div id="historySectionToggle" class="history-section-toggle">
-        <button
-          id="historyShowSingleBtn"
-          type="button"
-          aria-pressed="true"
-        >
+        <button id="historyShowSingleBtn" type="button" aria-pressed="true">
           <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
           <span>Previously used</span>
         </button>
-        <button
-          id="historyShowGalleriesBtn"
-          type="button"
-          aria-pressed="false"
-        >
+        <button id="historyShowGalleriesBtn" type="button" aria-pressed="false">
           <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
           <span>Galleries</span>
         </button>
@@ -602,12 +594,36 @@
                 </div>
 
                 <div class="editor-color-swatches" aria-label="Colour presets">
-                  <button type="button" data-editor-color="#ffffff" aria-label="White"></button>
-                  <button type="button" data-editor-color="#f5f0e6" aria-label="Warm cream"></button>
-                  <button type="button" data-editor-color="#e8f3ff" aria-label="Light sky"></button>
-                  <button type="button" data-editor-color="#e8f7ec" aria-label="Mint"></button>
-                  <button type="button" data-editor-color="#ffe8ef" aria-label="Rose"></button>
-                  <button type="button" data-editor-color="#111111" aria-label="Near black"></button>
+                  <button
+                    type="button"
+                    data-editor-color="#ffffff"
+                    aria-label="White"
+                  ></button>
+                  <button
+                    type="button"
+                    data-editor-color="#f5f0e6"
+                    aria-label="Warm cream"
+                  ></button>
+                  <button
+                    type="button"
+                    data-editor-color="#e8f3ff"
+                    aria-label="Light sky"
+                  ></button>
+                  <button
+                    type="button"
+                    data-editor-color="#e8f7ec"
+                    aria-label="Mint"
+                  ></button>
+                  <button
+                    type="button"
+                    data-editor-color="#ffe8ef"
+                    aria-label="Rose"
+                  ></button>
+                  <button
+                    type="button"
+                    data-editor-color="#111111"
+                    aria-label="Near black"
+                  ></button>
                 </div>
               </div>
               <div class="button-row">
@@ -623,40 +639,143 @@
             <div id="editorColorAdjustContent" class="hidden">
               <h2>Colours</h2>
               <div class="field-row">
-                <label for="editorBrightnessInput">Brightness</label>
-                <input
-                  id="editorBrightnessInput"
-                  type="range"
-                  min="-100"
-                  max="100"
-                  step="1"
-                  value="0"
-                />
-                <p id="editorBrightnessValue" class="settings-note">0%</p>
+                <label for="editorBrightnessInput" class="editor-slider-label">
+                  <span>Brightness</span>
+                  <span id="editorBrightnessValue" class="settings-note">0%</span>
+                </label>
+                <div class="editor-slider-row">
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorBrightnessInput"
+                    data-nudge-delta="-1"
+                    aria-label="Decrease brightness"
+                  >
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                  </button>
+                  <input
+                    id="editorBrightnessInput"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value="0"
+                  />
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorBrightnessInput"
+                    data-nudge-delta="1"
+                    aria-label="Increase brightness"
+                  >
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                  </button>
+                </div>
               </div>
               <div class="field-row">
-                <label for="editorWhiteBalanceInput">White balance</label>
-                <input
-                  id="editorWhiteBalanceInput"
-                  type="range"
-                  min="-100"
-                  max="100"
-                  step="1"
-                  value="0"
-                />
-                <p id="editorWhiteBalanceValue" class="settings-note">0%</p>
+                <label
+                  for="editorWhiteBalanceInput"
+                  class="editor-slider-label"
+                >
+                  <span>White balance</span>
+                  <span id="editorWhiteBalanceValue" class="settings-note">0%</span>
+                </label>
+                <div class="editor-slider-row">
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorWhiteBalanceInput"
+                    data-nudge-delta="-1"
+                    aria-label="Decrease white balance"
+                  >
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                  </button>
+                  <input
+                    id="editorWhiteBalanceInput"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value="0"
+                  />
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorWhiteBalanceInput"
+                    data-nudge-delta="1"
+                    aria-label="Increase white balance"
+                  >
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                  </button>
+                </div>
               </div>
               <div class="field-row">
-                <label for="editorSaturationInput">Saturation</label>
-                <input
-                  id="editorSaturationInput"
-                  type="range"
-                  min="-100"
-                  max="100"
-                  step="1"
-                  value="0"
-                />
-                <p id="editorSaturationValue" class="settings-note">0%</p>
+                <label for="editorSaturationInput" class="editor-slider-label">
+                  <span>Saturation</span>
+                  <span id="editorSaturationValue" class="settings-note">0%</span>
+                </label>
+                <div class="editor-slider-row">
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorSaturationInput"
+                    data-nudge-delta="-1"
+                    aria-label="Decrease saturation"
+                  >
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                  </button>
+                  <input
+                    id="editorSaturationInput"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value="0"
+                  />
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorSaturationInput"
+                    data-nudge-delta="1"
+                    aria-label="Increase saturation"
+                  >
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="field-row">
+                <label for="editorBlackpointInput" class="editor-slider-label">
+                  <span>Blackpoint</span>
+                  <span id="editorBlackpointValue" class="settings-note">0%</span>
+                </label>
+                <div class="editor-slider-row">
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorBlackpointInput"
+                    data-nudge-delta="-1"
+                    aria-label="Decrease blackpoint"
+                  >
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                  </button>
+                  <input
+                    id="editorBlackpointInput"
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value="0"
+                  />
+                  <button
+                    type="button"
+                    class="editor-slider-arrow"
+                    data-nudge-target="editorBlackpointInput"
+                    data-nudge-delta="1"
+                    aria-label="Increase blackpoint"
+                  >
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                  </button>
+                </div>
               </div>
               <div class="button-row">
                 <button id="editorApplyColorAdjustBtn" type="button">

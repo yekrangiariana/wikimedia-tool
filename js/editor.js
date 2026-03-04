@@ -157,6 +157,8 @@ export function createImageEditorController({
   whiteBalanceValueEl,
   saturationInput,
   saturationValueEl,
+  blackpointInput,
+  blackpointValueEl,
   eraserContentEl,
   eraserSizeInput,
   eraserSizeValueEl,
@@ -562,16 +564,16 @@ export function createImageEditorController({
     if (saturationValueEl) {
       saturationValueEl.textContent = `${getColorAdjustValue(saturationInput)}%`;
     }
+    if (blackpointValueEl) {
+      blackpointValueEl.textContent = `${getColorAdjustValue(blackpointInput)}%`;
+    }
   }
 
   function setColorAdjustInputs(operation) {
     const brightness = clamp(Number(operation?.brightness) || 0, -100, 100);
-    const whiteBalance = clamp(
-      Number(operation?.whiteBalance) || 0,
-      -100,
-      100,
-    );
+    const whiteBalance = clamp(Number(operation?.whiteBalance) || 0, -100, 100);
     const saturation = clamp(Number(operation?.saturation) || 0, -100, 100);
+    const blackpoint = clamp(Number(operation?.blackpoint) || 0, -100, 100);
 
     if (brightnessInput) {
       brightnessInput.value = String(brightness);
@@ -582,6 +584,9 @@ export function createImageEditorController({
     if (saturationInput) {
       saturationInput.value = String(saturation);
     }
+    if (blackpointInput) {
+      blackpointInput.value = String(blackpoint);
+    }
     updateColorAdjustLabels();
   }
 
@@ -591,6 +596,7 @@ export function createImageEditorController({
       brightness: getColorAdjustValue(brightnessInput),
       whiteBalance: getColorAdjustValue(whiteBalanceInput),
       saturation: getColorAdjustValue(saturationInput),
+      blackpoint: getColorAdjustValue(blackpointInput),
     };
   }
 
@@ -600,6 +606,7 @@ export function createImageEditorController({
       brightness: clamp(Number(nextOperation?.brightness) || 0, -100, 100),
       whiteBalance: clamp(Number(nextOperation?.whiteBalance) || 0, -100, 100),
       saturation: clamp(Number(nextOperation?.saturation) || 0, -100, 100),
+      blackpoint: clamp(Number(nextOperation?.blackpoint) || 0, -100, 100),
     };
 
     const withoutColorAdjust = operationHistory.filter(
@@ -609,7 +616,8 @@ export function createImageEditorController({
     const isNeutralAdjust =
       normalizedOperation.brightness === 0 &&
       normalizedOperation.whiteBalance === 0 &&
-      normalizedOperation.saturation === 0;
+      normalizedOperation.saturation === 0 &&
+      normalizedOperation.blackpoint === 0;
 
     operationHistory = isNeutralAdjust
       ? withoutColorAdjust
@@ -639,9 +647,9 @@ export function createImageEditorController({
         .reverse()
         .find((step) => step?.type === "colorAdjust") || null;
     const previousSignature = previousOperation
-      ? `${previousOperation.brightness}:${previousOperation.whiteBalance}:${previousOperation.saturation}`
+      ? `${previousOperation.brightness}:${previousOperation.whiteBalance}:${previousOperation.saturation}:${previousOperation.blackpoint || 0}`
       : "none";
-    const nextSignature = `${nextOperation.brightness}:${nextOperation.whiteBalance}:${nextOperation.saturation}`;
+    const nextSignature = `${nextOperation.brightness}:${nextOperation.whiteBalance}:${nextOperation.saturation}:${nextOperation.blackpoint}`;
 
     if (previousSignature === nextSignature) {
       return;
@@ -2338,6 +2346,97 @@ export function createImageEditorController({
     handleRangeArrowNudge(event, saturationInput, () => {
       updateColorAdjustLabels();
       scheduleColorAdjustPreview();
+    });
+  });
+  blackpointInput?.addEventListener("input", () => {
+    updateColorAdjustLabels();
+    scheduleColorAdjustPreview();
+  });
+  blackpointInput?.addEventListener("keydown", (event) => {
+    handleRangeArrowNudge(event, blackpointInput, () => {
+      updateColorAdjustLabels();
+      scheduleColorAdjustPreview();
+    });
+  });
+
+  const colorSliderNudgeButtons = Array.from(
+    rootEl.querySelectorAll(".editor-slider-arrow[data-nudge-target]"),
+  );
+
+  function nudgeColorSliderFromButton(button) {
+    const targetId = button.getAttribute("data-nudge-target") || "";
+    const targetInput = rootEl.querySelector(`#${targetId}`);
+    if (!(targetInput instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const delta = Number.parseInt(
+      button.getAttribute("data-nudge-delta") || "0",
+      10,
+    );
+    if (!Number.isFinite(delta) || delta === 0) {
+      return;
+    }
+
+    const min = Number.parseFloat(targetInput.min || "-100");
+    const max = Number.parseFloat(targetInput.max || "100");
+    const current = Number.parseFloat(targetInput.value || "0");
+    const nextValue = clamp(
+      (Number.isFinite(current) ? current : 0) + delta,
+      Number.isFinite(min) ? min : -100,
+      Number.isFinite(max) ? max : 100,
+    );
+    targetInput.value = String(Math.round(nextValue));
+    targetInput.focus({ preventScroll: true });
+    updateColorAdjustLabels();
+    scheduleColorAdjustPreview();
+  }
+
+  colorSliderNudgeButtons.forEach((button) => {
+    let repeatDelayTimer = null;
+    let repeatIntervalTimer = null;
+    let suppressNextClick = false;
+
+    const clearNudgeRepeatTimers = () => {
+      if (repeatDelayTimer) {
+        window.clearTimeout(repeatDelayTimer);
+        repeatDelayTimer = null;
+      }
+      if (repeatIntervalTimer) {
+        window.clearInterval(repeatIntervalTimer);
+        repeatIntervalTimer = null;
+      }
+    };
+
+    button.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") {
+        return;
+      }
+
+      event.preventDefault();
+      suppressNextClick = true;
+      nudgeColorSliderFromButton(button);
+
+      clearNudgeRepeatTimers();
+      repeatDelayTimer = window.setTimeout(() => {
+        repeatIntervalTimer = window.setInterval(() => {
+          nudgeColorSliderFromButton(button);
+        }, 70);
+      }, 260);
+    });
+
+    button.addEventListener("pointerup", clearNudgeRepeatTimers);
+    button.addEventListener("pointercancel", clearNudgeRepeatTimers);
+    button.addEventListener("pointerleave", clearNudgeRepeatTimers);
+
+    button.addEventListener("click", (event) => {
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        event.preventDefault();
+        return;
+      }
+
+      nudgeColorSliderFromButton(button);
     });
   });
 
