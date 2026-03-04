@@ -221,9 +221,32 @@ export function createImageEditorController({
   let colorAdjustPreviewRafId = null;
   let colorAdjustPreviewVersion = 0;
   let colorAdjustEmitTimer = null;
+  let lastDimensionsText = "";
+  let lastHistoryInfoText = "";
   const selectionMinSize = 24;
   const handleRadius = 8;
   const handleSize = 10;
+
+  function setDisabledIfChanged(element, nextDisabled) {
+    if (!element || element.disabled === nextDisabled) {
+      return;
+    }
+
+    element.disabled = nextDisabled;
+  }
+
+  function toggleClassIfChanged(element, className, shouldHave) {
+    if (!element) {
+      return;
+    }
+
+    const hasClass = element.classList.contains(className);
+    if (hasClass === shouldHave) {
+      return;
+    }
+
+    element.classList.toggle(className, shouldHave);
+  }
 
   function isTouchPointerEvent(event) {
     return event?.pointerType === "touch";
@@ -403,73 +426,81 @@ export function createImageEditorController({
   function updateToolbarState() {
     const hasSelection = Boolean(currentSelection);
     const isBusy = cutoutInProgress || editTaskInProgress;
-    cropToggleBtn.classList.toggle("active-tab", cropMode);
-    cropToggleBtn.disabled = isBusy;
+    toggleClassIfChanged(cropToggleBtn, "active-tab", cropMode);
+    setDisabledIfChanged(cropToggleBtn, isBusy);
     if (backgroundBtn) {
-      backgroundBtn.classList.toggle("active-tab", backgroundMode);
-      backgroundBtn.disabled = isBusy;
+      toggleClassIfChanged(backgroundBtn, "active-tab", backgroundMode);
+      setDisabledIfChanged(backgroundBtn, isBusy);
     }
     if (colorAdjustBtn) {
-      colorAdjustBtn.classList.toggle("active-tab", colorAdjustMode);
-      colorAdjustBtn.disabled = isBusy;
+      toggleClassIfChanged(colorAdjustBtn, "active-tab", colorAdjustMode);
+      setDisabledIfChanged(colorAdjustBtn, isBusy);
     }
     if (eraserBtn) {
-      eraserBtn.classList.toggle("active-tab", eraserMode);
-      eraserBtn.disabled = isBusy;
+      toggleClassIfChanged(eraserBtn, "active-tab", eraserMode);
+      setDisabledIfChanged(eraserBtn, isBusy);
     }
-    applyCropBtn.disabled = !hasSelection || isBusy;
+    setDisabledIfChanged(applyCropBtn, !hasSelection || isBusy);
     if (applyBackgroundBtn) {
-      applyBackgroundBtn.disabled = !workingCanvas || isBusy;
+      setDisabledIfChanged(applyBackgroundBtn, !workingCanvas || isBusy);
     }
     if (applyColorAdjustBtn) {
-      applyColorAdjustBtn.disabled = !workingCanvas || isBusy;
+      setDisabledIfChanged(applyColorAdjustBtn, !workingCanvas || isBusy);
     }
     if (undoBtn) {
-      undoBtn.disabled = operationHistory.length === 0 || isBusy;
+      setDisabledIfChanged(undoBtn, operationHistory.length === 0 || isBusy);
     }
     if (eraserUndoBtn) {
-      eraserUndoBtn.disabled = operationHistory.length === 0 || isBusy;
+      setDisabledIfChanged(
+        eraserUndoBtn,
+        operationHistory.length === 0 || isBusy,
+      );
     }
     if (eraserRedoBtn) {
-      eraserRedoBtn.disabled = redoHistory.length === 0 || isBusy;
+      setDisabledIfChanged(eraserRedoBtn, redoHistory.length === 0 || isBusy);
     }
     if (removeBgBtn) {
-      removeBgBtn.disabled = !workingCanvas || isBusy;
+      setDisabledIfChanged(removeBgBtn, !workingCanvas || isBusy);
     }
-    resetBtn.disabled = !workingCanvas || isBusy;
-    downloadBtn.disabled = !workingCanvas || isBusy;
+    setDisabledIfChanged(resetBtn, !workingCanvas || isBusy);
+    setDisabledIfChanged(downloadBtn, !workingCanvas || isBusy);
     if (aspectRatioRow) {
-      aspectRatioRow.classList.toggle("hidden", !cropMode);
+      toggleClassIfChanged(aspectRatioRow, "hidden", !cropMode);
     }
 
     if (cropContentEl) {
-      cropContentEl.classList.toggle("hidden", !cropMode);
+      toggleClassIfChanged(cropContentEl, "hidden", !cropMode);
     }
 
     if (backgroundContentEl) {
-      backgroundContentEl.classList.toggle("hidden", !backgroundMode);
+      toggleClassIfChanged(backgroundContentEl, "hidden", !backgroundMode);
     }
 
     if (eraserContentEl) {
-      eraserContentEl.classList.toggle("hidden", !eraserMode);
+      toggleClassIfChanged(eraserContentEl, "hidden", !eraserMode);
     }
 
     if (colorAdjustContentEl) {
-      colorAdjustContentEl.classList.toggle("hidden", !colorAdjustMode);
+      toggleClassIfChanged(colorAdjustContentEl, "hidden", !colorAdjustMode);
     }
 
     if (cropHintEl) {
-      cropHintEl.classList.toggle(
+      toggleClassIfChanged(
+        cropHintEl,
         "hidden",
-        cropMode || backgroundMode || colorAdjustMode || eraserMode,
+        Boolean(cropMode || backgroundMode || colorAdjustMode || eraserMode),
       );
     }
 
     if (historyInfoEl) {
-      historyInfoEl.textContent =
+      const nextHistoryInfoText =
         operationHistory.length > 0
           ? `You have made ${operationHistory.length} edit${operationHistory.length === 1 ? "" : "s"}.`
           : "You have not made any edits yet.";
+      if (lastHistoryInfoText !== nextHistoryInfoText) {
+        historyInfoEl.textContent = nextHistoryInfoText;
+        lastHistoryInfoText = nextHistoryInfoText;
+      }
     }
 
     overlayEl.classList.remove(
@@ -748,11 +779,18 @@ export function createImageEditorController({
     }
 
     if (!workingCanvas) {
-      dimensionsEl.textContent = "";
+      if (lastDimensionsText !== "") {
+        dimensionsEl.textContent = "";
+        lastDimensionsText = "";
+      }
       return;
     }
 
-    dimensionsEl.textContent = `Current image size is ${workingCanvas.width} × ${workingCanvas.height} pixels.`;
+    const nextDimensionsText = `Current image size is ${workingCanvas.width} × ${workingCanvas.height} pixels.`;
+    if (lastDimensionsText !== nextDimensionsText) {
+      dimensionsEl.textContent = nextDimensionsText;
+      lastDimensionsText = nextDimensionsText;
+    }
   }
 
   function sizeStageCanvases() {
@@ -2102,6 +2140,8 @@ export function createImageEditorController({
     eraserStrokePoints = [];
     eraserStrokePointerId = null;
     eraserCursorPoint = null;
+    lastDimensionsText = "";
+    lastHistoryInfoText = "";
     activeAspectRatio = parseAspectRatio(aspectRatioSelect?.value || "free");
     isOpen = true;
 
@@ -2136,6 +2176,8 @@ export function createImageEditorController({
     eraserStrokePoints = [];
     eraserStrokePointerId = null;
     eraserCursorPoint = null;
+    lastDimensionsText = "";
+    lastHistoryInfoText = "";
     if (colorAdjustPreviewRafId) {
       window.cancelAnimationFrame(colorAdjustPreviewRafId);
       colorAdjustPreviewRafId = null;

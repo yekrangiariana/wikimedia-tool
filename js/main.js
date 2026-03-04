@@ -300,6 +300,9 @@ let previewBuildQueueRunning = false;
 let progressNoticeDepth = 0;
 const previewBlobUrls = new Map();
 let imageEditsNeedsCompaction = false;
+let activeSearchAbortController = null;
+let activeSearchRequestId = 0;
+let directoryDbPromise = null;
 
 function normalizeEditorHexColor(value) {
   const raw = typeof value === "string" ? value.trim() : "";
@@ -597,6 +600,9 @@ searchForm.addEventListener("submit", async (event) => {
   try {
     await runSearch({ append: false });
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     console.error(error);
     setStatus("Search failed. Please try again.");
   }
@@ -619,6 +625,9 @@ showMoreBtn.addEventListener("click", async () => {
   try {
     await runSearch({ append: true });
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     console.error(error);
     setStatus("Could not load more results. Please try again.");
   } finally {
@@ -640,6 +649,9 @@ scanMorePhotoBtn.addEventListener("click", async () => {
   try {
     await runSearch({ append: true });
   } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
     console.error(error);
     setStatus("Could not scan more results. Please try again.");
   }
@@ -735,6 +747,9 @@ sortSelect.addEventListener("change", () => {
   setStatus("Applying filters...");
 
   runSearch({ append: false }).catch((error) => {
+    if (isAbortError(error)) {
+      return;
+    }
     console.error(error);
     setStatus("Could not apply filters. Please try again.");
   });
@@ -750,6 +765,9 @@ assessmentSelect.addEventListener("change", () => {
   setStatus("Applying filters...");
 
   runSearch({ append: false }).catch((error) => {
+    if (isAbortError(error)) {
+      return;
+    }
     console.error(error);
     setStatus("Could not apply filters. Please try again.");
   });
@@ -766,6 +784,9 @@ photoDateSortSelect.addEventListener("change", () => {
   setStatus("Applying experimental photo-date filter...");
 
   runSearch({ append: false }).catch((error) => {
+    if (isAbortError(error)) {
+      return;
+    }
     console.error(error);
     setStatus("Could not apply experimental filter. Please try again.");
   });
@@ -912,49 +933,87 @@ function buildSearchQuery(query, assessmentMode) {
   return baseQuery;
 }
 
-async function runSearch({ append }) {
-  const activeSortMode = getActiveSortMode();
-
-  if (isPhotoDateSortMode(activeSortMode)) {
-    await runPhotoDateScanSearch({ append });
-    return;
+function isAbortError(error) {
+  if (!error) {
+    return false;
   }
 
-  const batch = await fetchSearchBatch(append ? nextContinue : null);
-  const parsedResults = batch.results;
-  if (Number.isFinite(batch.totalHits)) {
-    currentTotalAvailable = batch.totalHits;
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
   }
 
-  if (!append) {
-    currentResults = parsedResults;
-    currentResults = sortResultsBySelectedMode(currentResults, activeSortMode);
-    renderResults(currentResults, { append: false });
-
-    if (!currentResults.length) {
-      setStatus("No image results found. Try another term.");
-      nextContinue = null;
-      currentTotalAvailable = 0;
-      updateShowMoreVisibility();
-      return;
-    }
-  } else {
-    const existingIds = new Set(currentResults.map((item) => item.pageId));
-    const uniqueNewResults = parsedResults.filter(
-      (item) => !existingIds.has(item.pageId),
-    );
-    currentResults = [...currentResults, ...uniqueNewResults];
-    currentResults = sortResultsBySelectedMode(currentResults, activeSortMode);
-    renderResults(currentResults, { append: false });
-  }
-
-  nextContinue = batch.continueData;
-
-  updateShowMoreVisibility();
-  setSearchStatus();
+  return error?.name === "AbortError";
 }
 
-async function runPhotoDateScanSearch({ append }) {
+async function runSearch({ append }) {
+  const requestId = activeSearchRequestId + 1;
+  activeSearchRequestId = requestId;
+  if (activeSearchAbortController) {
+    activeSearchAbortController.abort();
+  }
+  const abortController = new AbortController();
+  activeSearchAbortController = abortController;
+
+  const activeSortMode = getActiveSortMode();
+  try {
+    if (isPhotoDateSortMode(activeSortMode)) {
+      await runPhotoDateScanSearch({
+        append,
+        signal: abortController.signal,
+        requestId,
+      });
+      return;
+    }
+
+    const batch = await fetchSearchBatch(append ? nextContinue : null, {
+      signal: abortController.signal,
+    });
+    if (
+      abortController.signal.aborted ||
+      requestId !== activeSearchRequestId
+    ) {
+      throw new DOMException("Search request superseded", "AbortError");
+    }
+
+    const parsedResults = batch.results;
+    if (Number.isFinite(batch.totalHits)) {
+      currentTotalAvailable = batch.totalHits;
+    }
+
+    if (!append) {
+      currentResults = parsedResults;
+      currentResults = sortResultsBySelectedMode(currentResults, activeSortMode);
+      renderResults(currentResults, { append: false });
+
+      if (!currentResults.length) {
+        setStatus("No image results found. Try another term.");
+        nextContinue = null;
+        currentTotalAvailable = 0;
+        updateShowMoreVisibility();
+        return;
+      }
+    } else {
+      const existingIds = new Set(currentResults.map((item) => item.pageId));
+      const uniqueNewResults = parsedResults.filter(
+        (item) => !existingIds.has(item.pageId),
+      );
+      currentResults = [...currentResults, ...uniqueNewResults];
+      currentResults = sortResultsBySelectedMode(currentResults, activeSortMode);
+      renderResults(currentResults, { append: false });
+    }
+
+    nextContinue = batch.continueData;
+
+    updateShowMoreVisibility();
+    setSearchStatus();
+  } finally {
+    if (activeSearchAbortController === abortController) {
+      activeSearchAbortController = null;
+    }
+  }
+}
+
+async function runPhotoDateScanSearch({ append, signal, requestId }) {
   setPhotoDateScanningState(true);
 
   const baseResults = append ? [...currentResults] : [];
@@ -967,7 +1026,11 @@ async function runPhotoDateScanSearch({ append }) {
     const scanPages = parsePhotoScanPages(settings.photoScanPages);
 
     while (pagesFetched < scanPages) {
-      const batch = await fetchSearchBatch(continueData);
+      const batch = await fetchSearchBatch(continueData, { signal });
+      if (signal?.aborted || requestId !== activeSearchRequestId) {
+        throw new DOMException("Search request superseded", "AbortError");
+      }
+
       if (Number.isFinite(batch.totalHits)) {
         currentTotalAvailable = batch.totalHits;
       }
@@ -990,6 +1053,10 @@ async function runPhotoDateScanSearch({ append }) {
       }
     }
 
+    if (signal?.aborted || requestId !== activeSearchRequestId) {
+      throw new DOMException("Search request superseded", "AbortError");
+    }
+
     currentResults = [...baseResults, ...collected];
     currentResults = sortResultsBySelectedMode(
       currentResults,
@@ -1005,8 +1072,10 @@ async function runPhotoDateScanSearch({ append }) {
   }
 }
 
-async function fetchSearchBatch(continueData) {
-  const response = await fetch(buildSearchUrl(currentQuery, continueData));
+async function fetchSearchBatch(continueData, options = {}) {
+  const response = await fetch(buildSearchUrl(currentQuery, continueData), {
+    signal: options?.signal,
+  });
   if (!response.ok) {
     throw new Error(
       `Wikimedia API request failed with status ${response.status}`,
@@ -1541,6 +1610,31 @@ async function buildPreviewUrlFromHistory(imageUrl, historyOrOperations) {
   );
 }
 
+function getFinderAlternateEditKey(image, currentKey) {
+  if (typeof currentKey !== "string" || !currentKey.startsWith("finder:")) {
+    return "";
+  }
+
+  const pageKey = Number.isInteger(image?.pageId)
+    ? buildImageEditKey({ pageId: image.pageId }, "finder")
+    : "";
+  const imageUrl =
+    typeof image?.imageUrl === "string" && image.imageUrl.trim()
+      ? image.imageUrl.trim()
+      : "";
+  const urlKey = imageUrl ? buildImageEditKey({ imageUrl }, "finder") : "";
+
+  if (currentKey === pageKey) {
+    return urlKey;
+  }
+
+  if (currentKey === urlKey) {
+    return pageKey;
+  }
+
+  return pageKey || urlKey || "";
+}
+
 function ensurePreviewForImage(image, context, onReady, options = {}) {
   const allowForegroundRebuild = options?.allowForegroundRebuild === true;
   const key = buildImageEditKey(image, context);
@@ -1652,8 +1746,20 @@ function ensurePreviewForImage(image, context, onReady, options = {}) {
 
 async function resolveDownloadSourceUrlForImage(image, context = "finder") {
   const key = buildImageEditKey(image, context);
-  const edit = getImageEditState(key);
-  const operations = normalizeOperationsFromEdit(edit);
+  let edit = getImageEditState(key);
+  let operations = normalizeOperationsFromEdit(edit);
+
+  if ((!edit || !operations.length) && context === "finder") {
+    const alternateKey = getFinderAlternateEditKey(image, key);
+    if (alternateKey) {
+      const alternateEdit = getImageEditState(alternateKey);
+      const alternateOperations = normalizeOperationsFromEdit(alternateEdit);
+      if (alternateEdit && alternateOperations.length > 0) {
+        edit = alternateEdit;
+        operations = alternateOperations;
+      }
+    }
+  }
 
   if (
     typeof edit?.previewUrl === "string" &&
@@ -2615,7 +2721,6 @@ async function savePreviewBlobToCache(key, blob) {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch (error) {
     console.error(error);
   }
@@ -2634,7 +2739,6 @@ async function loadPreviewBlobFromCache(key) {
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error);
     });
-    db.close();
     return value?.blob instanceof Blob ? value.blob : null;
   } catch {
     return null;
@@ -2660,7 +2764,6 @@ async function deletePreviewBlobFromCache(key) {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch (error) {
     console.error(error);
   }
@@ -5030,7 +5133,6 @@ async function loadHistoryFromFastStorage() {
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error);
     });
-    db.close();
     return sanitizeHistoryEntries(value);
   } catch {
     return [];
@@ -5046,7 +5148,6 @@ async function saveHistoryToFastStorage(entries) {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch (error) {
     console.error(error);
   }
@@ -5308,7 +5409,11 @@ function updateExportDirectoryUI() {
 }
 
 async function openDirectoryDb() {
-  return new Promise((resolve, reject) => {
+  if (directoryDbPromise) {
+    return directoryDbPromise;
+  }
+
+  directoryDbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DIRECTORY_DB_NAME, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -5319,9 +5424,21 @@ async function openDirectoryDb() {
         db.createObjectStore(PREVIEW_CACHE_STORE_NAME);
       }
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        directoryDbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      directoryDbPromise = null;
+      reject(request.error);
+    };
   });
+
+  return directoryDbPromise;
 }
 
 async function saveDirectoryHandle(handle) {
@@ -5337,7 +5454,6 @@ async function saveDirectoryHandle(handle) {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch (error) {
     console.error(error);
   }
@@ -5358,7 +5474,6 @@ async function loadDirectoryHandle() {
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error);
     });
-    db.close();
     return value;
   } catch {
     return null;
@@ -5378,7 +5493,6 @@ async function clearDirectoryHandle() {
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch (error) {
     console.error(error);
   }
