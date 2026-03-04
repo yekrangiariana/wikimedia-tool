@@ -173,6 +173,106 @@
   box-shadow: inset 0 0 0 1px var(--text);
 }
 
+.finder-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.settings-section .finder-mode-grid .mode-option {
+  grid-template-columns: 1fr;
+  gap: 0;
+  align-items: stretch;
+  min-height: 92px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.settings-section .finder-mode-grid .mode-option .toggle-copy {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  height: 100%;
+  padding: 10px;
+  border: var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+}
+
+.settings-section .finder-mode-grid .mode-option .toggle-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+}
+
+.settings-section .finder-mode-grid .mode-option .toggle-title i {
+  color: var(--text-muted);
+}
+
+.settings-section .finder-mode-grid .mode-option .toggle-subtitle {
+  font-size: var(--font-size-xxs);
+  line-height: 1.3;
+}
+
+.settings-section .finder-mode-grid .mode-option .mode-state {
+  margin-top: auto;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 6px;
+  border: var(--border);
+  border-radius: 999px;
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-label);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  opacity: 0;
+}
+
+.settings-section .finder-mode-grid .mode-option:hover .toggle-copy {
+  background: #f0ede9;
+}
+
+.settings-section .finder-mode-grid .mode-option input:checked + .toggle-copy {
+  background: var(--surface-muted);
+  border-color: var(--success);
+  box-shadow: inset 0 0 0 1px var(--success);
+}
+
+.settings-section
+  .finder-mode-grid
+  .mode-option
+  input:checked
+  + .toggle-copy
+  .toggle-title
+  i {
+  color: var(--success);
+}
+
+.settings-section
+  .finder-mode-grid
+  .mode-option
+  input:checked
+  + .toggle-copy
+  .mode-state {
+  color: var(--success);
+  opacity: 1;
+}
+
+.settings-section
+  .finder-mode-grid
+  .mode-option
+  input:focus-visible
+  + .toggle-copy {
+  box-shadow: inset 0 0 0 1px var(--text);
+}
+
 /* Export folder section */
 .export-folder-section {
   display: grid;

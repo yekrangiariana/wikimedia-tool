@@ -1024,27 +1024,43 @@
           <option value="4">4 columns</option>
         </select>
 
-        <label class="checkbox-inline" for="galleryModeCheckbox">
-          <input id="galleryModeCheckbox" type="checkbox" />
-          <span class="toggle-switch" aria-hidden="true"></span>
-          <span class="toggle-copy">
-            <span class="toggle-title">Enable gallery mode</span>
-            <span class="toggle-subtitle"
-              >Build reusable image collections from search results.</span
-            >
-          </span>
-        </label>
+        <div class="finder-mode-grid" aria-label="Finder mode selection">
+          <label class="checkbox-inline mode-option" for="normalModeCheckbox">
+            <input id="normalModeCheckbox" type="checkbox" />
+            <span class="toggle-copy">
+              <span class="toggle-title">
+                <i class="fa-regular fa-image" aria-hidden="true"></i>
+                <span>Normal</span>
+              </span>
+              <span class="toggle-subtitle">Single image flow</span>
+              <span class="mode-state" aria-hidden="true">ON</span>
+            </span>
+          </label>
 
-        <label class="checkbox-inline" for="splitModeCheckbox">
-          <input id="splitModeCheckbox" type="checkbox" />
-          <span class="toggle-switch" aria-hidden="true"></span>
-          <span class="toggle-copy">
-            <span class="toggle-title">Enable split mode</span>
-            <span class="toggle-subtitle"
-              >Combine 2-3 images side by side on a canvas.</span
-            >
-          </span>
-        </label>
+          <label class="checkbox-inline mode-option" for="galleryModeCheckbox">
+            <input id="galleryModeCheckbox" type="checkbox" />
+            <span class="toggle-copy">
+              <span class="toggle-title">
+                <i class="fa-regular fa-images" aria-hidden="true"></i>
+                <span>Gallery</span>
+              </span>
+              <span class="toggle-subtitle">Build image collections</span>
+              <span class="mode-state" aria-hidden="true">ON</span>
+            </span>
+          </label>
+
+          <label class="checkbox-inline mode-option" for="splitModeCheckbox">
+            <input id="splitModeCheckbox" type="checkbox" />
+            <span class="toggle-copy">
+              <span class="toggle-title">
+                <i class="fa-solid fa-table-columns" aria-hidden="true"></i>
+                <span>Split</span>
+              </span>
+              <span class="toggle-subtitle">Combine 2–3 images</span>
+              <span class="mode-state" aria-hidden="true">ON</span>
+            </span>
+          </label>
+        </div>
 
         <label for="photoScanPagesSelect">
           Experimental photo-date scan depth

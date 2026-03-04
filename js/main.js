@@ -135,6 +135,7 @@ const closeSettingsBtn = document.getElementById("closeSettingsBtn");
 const settingsPanel = document.getElementById("settingsPanel");
 const settingsBackdrop = document.getElementById("settingsBackdrop");
 const gridColumnsSelect = document.getElementById("gridColumnsSelect");
+const normalModeCheckbox = document.getElementById("normalModeCheckbox");
 const galleryModeCheckbox = document.getElementById("galleryModeCheckbox");
 const splitModeCheckbox = document.getElementById("splitModeCheckbox");
 const photoScanPagesSelect = document.getElementById("photoScanPagesSelect");
@@ -559,8 +560,7 @@ function openFinderSplitFromEditor(meta) {
     galleryMode: false,
   };
   saveSettings();
-  splitModeCheckbox.checked = true;
-  galleryModeCheckbox.checked = false;
+  syncFinderModeCheckboxes();
 
   splitLayoutSelect.value = "2";
   selectedSplitItems.clear();
@@ -593,8 +593,7 @@ function openFinderWithExistingSplit(meta) {
     galleryMode: false,
   };
   saveSettings();
-  splitModeCheckbox.checked = true;
-  galleryModeCheckbox.checked = false;
+  syncFinderModeCheckboxes();
 
   splitLayoutSelect.value = String(splitLayout);
   selectedSplitItems.clear();
@@ -695,12 +694,17 @@ openSettingsBtn.addEventListener("click", openSettingsPanel);
 closeSettingsBtn.addEventListener("click", closeSettingsPanel);
 settingsBackdrop.addEventListener("click", closeSettingsPanel);
 saveSettingsBtn.addEventListener("click", () => {
+  const modeState = normalizeFinderModes({
+    galleryMode: Boolean(galleryModeCheckbox.checked),
+    splitMode: Boolean(splitModeCheckbox.checked),
+  });
+
   settings = {
     gridColumns: parseGridColumns(gridColumnsSelect.value),
     exportPathLabel: (exportPathInput.value || "").trim(),
     photoScanPages: parsePhotoScanPages(photoScanPagesSelect.value),
-    galleryMode: parseGalleryMode(settings.galleryMode),
-    splitMode: parseSplitMode(settings.splitMode),
+    galleryMode: modeState.galleryMode,
+    splitMode: modeState.splitMode,
     exportMaxWidth: parseExportMaxWidth(exportMaxWidthInput.value),
     exportTargetKb: parseExportTargetKb(exportTargetKbInput.value),
     exportFormat: parseExportFormat(exportFormatSelect.value),
@@ -708,8 +712,7 @@ saveSettingsBtn.addEventListener("click", () => {
   gridColumnsSelect.value = String(settings.gridColumns);
   exportPathInput.value = settings.exportPathLabel;
   photoScanPagesSelect.value = String(settings.photoScanPages);
-  galleryModeCheckbox.checked = parseGalleryMode(settings.galleryMode);
-  splitModeCheckbox.checked = parseSplitMode(settings.splitMode);
+  syncFinderModeCheckboxes();
   exportMaxWidthInput.value = String(settings.exportMaxWidth);
   exportTargetKbInput.value = String(settings.exportTargetKb);
   exportFormatSelect.value = settings.exportFormat;
@@ -720,6 +723,26 @@ saveSettingsBtn.addEventListener("click", () => {
   renderResults(currentResults, { append: false });
   updateExportDirectoryUI();
   setStatus("Settings saved.");
+});
+
+normalModeCheckbox.addEventListener("change", () => {
+  if (!normalModeCheckbox.checked) {
+    normalModeCheckbox.checked = true;
+    return;
+  }
+
+  galleryModeCheckbox.checked = false;
+  splitModeCheckbox.checked = false;
+  settings = {
+    ...settings,
+    galleryMode: false,
+    splitMode: false,
+  };
+  saveSettings();
+  applyGalleryModeUI();
+  applySplitModeUI();
+  renderResults(currentResults, { append: false });
+  setStatus("Normal mode enabled.");
 });
 
 galleryModeCheckbox.addEventListener("change", () => {
@@ -735,11 +758,22 @@ galleryModeCheckbox.addEventListener("change", () => {
   settings = {
     ...settings,
     galleryMode: enabled,
+    splitMode: enabled ? false : settings.splitMode,
   };
+  const modeState = normalizeFinderModes(settings);
+  settings = {
+    ...settings,
+    galleryMode: modeState.galleryMode,
+    splitMode: modeState.splitMode,
+  };
+  syncFinderModeCheckboxes();
   saveSettings();
   applyGalleryModeUI();
+  applySplitModeUI();
   renderResults(currentResults, { append: false });
-  setStatus(enabled ? "Gallery mode enabled." : "Gallery mode disabled.");
+  setStatus(
+    settings.galleryMode ? "Gallery mode enabled." : "Normal mode enabled.",
+  );
 });
 
 splitModeCheckbox.addEventListener("change", () => {
@@ -755,11 +789,22 @@ splitModeCheckbox.addEventListener("change", () => {
   settings = {
     ...settings,
     splitMode: enabled,
+    galleryMode: enabled ? false : settings.galleryMode,
   };
+  const modeState = normalizeFinderModes(settings);
+  settings = {
+    ...settings,
+    galleryMode: modeState.galleryMode,
+    splitMode: modeState.splitMode,
+  };
+  syncFinderModeCheckboxes();
   saveSettings();
+  applyGalleryModeUI();
   applySplitModeUI();
   renderResults(currentResults, { append: false });
-  setStatus(enabled ? "Split mode enabled." : "Split mode disabled.");
+  setStatus(
+    settings.splitMode ? "Split mode enabled." : "Normal mode enabled.",
+  );
 });
 
 selectExportDirBtn.addEventListener("click", chooseExportDirectory);
@@ -3150,11 +3195,32 @@ function applySettingsToUI() {
   gridColumnsSelect.value = String(settings.gridColumns);
   exportPathInput.value = settings.exportPathLabel || "";
   photoScanPagesSelect.value = String(settings.photoScanPages);
-  galleryModeCheckbox.checked = parseGalleryMode(settings.galleryMode);
-  splitModeCheckbox.checked = parseSplitMode(settings.splitMode);
+  syncFinderModeCheckboxes();
   exportMaxWidthInput.value = String(settings.exportMaxWidth);
   exportTargetKbInput.value = String(settings.exportTargetKb);
   exportFormatSelect.value = parseExportFormat(settings.exportFormat);
+}
+
+function normalizeFinderModes(value) {
+  const galleryMode = parseGalleryMode(value?.galleryMode);
+  const splitMode = parseSplitMode(value?.splitMode);
+  if (splitMode) {
+    return { galleryMode: false, splitMode: true };
+  }
+  if (galleryMode) {
+    return { galleryMode: true, splitMode: false };
+  }
+  return { galleryMode: false, splitMode: false };
+}
+
+function syncFinderModeCheckboxes() {
+  const normalized = normalizeFinderModes(settings);
+  galleryModeCheckbox.checked = normalized.galleryMode;
+  splitModeCheckbox.checked = normalized.splitMode;
+  if (normalModeCheckbox) {
+    normalModeCheckbox.checked =
+      !normalized.galleryMode && !normalized.splitMode;
+  }
 }
 
 function parseGridColumns(value) {
@@ -6088,7 +6154,7 @@ function loadSettings() {
     }
 
     const parsed = JSON.parse(raw);
-    return {
+    const parsedSettings = {
       gridColumns: parseGridColumns(parsed?.gridColumns),
       exportPathLabel:
         typeof parsed?.exportPathLabel === "string"
@@ -6100,6 +6166,12 @@ function loadSettings() {
       exportMaxWidth: parseExportMaxWidth(parsed?.exportMaxWidth),
       exportTargetKb: parseExportTargetKb(parsed?.exportTargetKb),
       exportFormat: parseExportFormat(parsed?.exportFormat),
+    };
+    const modeState = normalizeFinderModes(parsedSettings);
+    return {
+      ...parsedSettings,
+      galleryMode: modeState.galleryMode,
+      splitMode: modeState.splitMode,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
