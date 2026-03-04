@@ -222,6 +222,30 @@
   margin-bottom: 10px;
 }
 
+.editor-split-controls {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.editor-split-controls.hidden {
+  display: none;
+}
+
+.editor-split-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.editor-split-controls-grid button {
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 #editorCropContent {
   display: grid;
   gap: 10px;

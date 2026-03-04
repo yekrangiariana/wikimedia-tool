@@ -341,6 +341,46 @@
   color: var(--text-light);
 }
 
+.gallery-item-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.gallery-item-reorder {
+  padding: 4px 8px;
+  background: var(--button-bg);
+  color: var(--button-text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  transition: background 0.2s;
+}
+
+.gallery-item-reorder:hover {
+  background: var(--button-bg-hover);
+}
+
+.gallery-item-reorder i {
+  font-size: 11px;
+}
+
+.gallery-item-remove {
+  padding: 4px 10px;
+  background: var(--button-bg);
+  color: var(--button-text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  transition: background 0.2s;
+}
+
+.gallery-item-remove:hover {
+  background: var(--button-bg-hover);
+}
+
 .gallery-item button {
   padding: 6px 8px;
   font-size: var(--font-size-xs);

@@ -191,6 +191,33 @@ function normalizeColorAdjustOperation(step) {
   };
 }
 
+function normalizeSplitReframeOperation(step) {
+  const offsets = Array.isArray(step?.offsets)
+    ? step.offsets
+        .map((offset) => ({
+          x: Number(offset?.x),
+          y: Number(offset?.y),
+        }))
+        .filter((offset) => Number.isFinite(offset.x) && Number.isFinite(offset.y))
+    : [];
+
+  if (!offsets.length) {
+    return null;
+  }
+
+  const scales = Array.isArray(step?.scales)
+    ? step.scales
+        .map((value) => Number(value))
+        .map((value) => (Number.isFinite(value) ? clamp(value, 1, 3) : 1))
+    : [];
+
+  return {
+    type: "splitReframe",
+    offsets,
+    scales,
+  };
+}
+
 function applyColorAdjustOperation(sourceCanvas, operation) {
   const nextCanvas = cloneCanvas(sourceCanvas);
   const nextContext = nextCanvas.getContext("2d");
@@ -294,6 +321,7 @@ function applyEraseOperation(sourceCanvas, operation) {
  * - { type: "background", color }
  * - { type: "colorAdjust", brightness, whiteBalance, saturation, blackpoint }
  * - { type: "crop", x, y, width, height }
+ * - { type: "splitReframe", offsets: [{x, y}, ...], scales: [number, ...] }
  *
  * Any future editor feature should add a new operation type here first,
  * then update `applyEditOperationsToCanvas` to execute it.
@@ -321,6 +349,10 @@ export function normalizeEditOperations(input) {
         return normalizeColorAdjustOperation(step);
       }
 
+      if (step?.type === "splitReframe") {
+        return normalizeSplitReframeOperation(step);
+      }
+
       if (step?.type === "crop") {
         return normalizeCropOperation(step);
       }
@@ -343,6 +375,7 @@ export function normalizeEditOperations(input) {
         (step.type === "cutout" ||
           step.type === "background" ||
           step.type === "colorAdjust" ||
+          step.type === "splitReframe" ||
           (step.type === "erase" && Array.isArray(step.points)) ||
           (Number.isFinite(step.x) &&
             Number.isFinite(step.y) &&
@@ -387,6 +420,11 @@ export async function applyEditOperationsToCanvas(baseCanvas, operations) {
 
     if (operation.type === "crop") {
       workingCanvas = cropCanvas(workingCanvas, operation);
+      continue;
+    }
+
+    if (operation.type === "splitReframe") {
+      continue;
     }
   }
 

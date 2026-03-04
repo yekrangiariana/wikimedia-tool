@@ -27,6 +27,7 @@ const EXPORT_WIDTH_MAX = 6000;
 const EXPORT_TARGET_KB_MIN = 40;
 const EXPORT_TARGET_KB_MAX = 5000;
 const EXPORT_FORMATS = ["webp", "jpg", "png"];
+const SPLIT_CACHE_URL_PREFIX = "split-cache:";
 const HISTORY_STORAGE_KEY = "wikimediaTool.history.v1";
 const SETTINGS_STORAGE_KEY = "wikimediaTool.settings.v1";
 const IMAGE_EDITS_STORAGE_KEY = "wikimediaTool.imageEdits.v1";
@@ -40,6 +41,7 @@ const DEFAULT_SETTINGS = {
   exportPathLabel: "",
   photoScanPages: PHOTO_DATE_SCAN_PAGES_DEFAULT,
   galleryMode: false,
+  splitMode: false,
   exportMaxWidth: DOWNLOAD_MAX_WIDTH,
   exportTargetKb: Math.round(DOWNLOAD_MAX_BYTES / 1024),
   exportFormat: "webp",
@@ -134,6 +136,7 @@ const settingsPanel = document.getElementById("settingsPanel");
 const settingsBackdrop = document.getElementById("settingsBackdrop");
 const gridColumnsSelect = document.getElementById("gridColumnsSelect");
 const galleryModeCheckbox = document.getElementById("galleryModeCheckbox");
+const splitModeCheckbox = document.getElementById("splitModeCheckbox");
 const photoScanPagesSelect = document.getElementById("photoScanPagesSelect");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 const exportSupportText = document.getElementById("exportSupportText");
@@ -205,6 +208,15 @@ const editorBackgroundContent = document.getElementById(
 const editorCropHint = document.getElementById("editorCropHint");
 const editorAspectRatioRow = document.getElementById("editorAspectRatioRow");
 const editorHistoryInfo = document.getElementById("editorHistoryInfo");
+const editorSplitReframeControls = document.getElementById(
+  "editorSplitReframeControls",
+);
+const editorSplitMoveUpBtn = document.getElementById("editorSplitMoveUpBtn");
+const editorSplitMoveDownBtn = document.getElementById("editorSplitMoveDownBtn");
+const editorSplitMoveLeftBtn = document.getElementById("editorSplitMoveLeftBtn");
+const editorSplitMoveRightBtn = document.getElementById("editorSplitMoveRightBtn");
+const editorSplitZoomInBtn = document.getElementById("editorSplitZoomInBtn");
+const editorSplitZoomOutBtn = document.getElementById("editorSplitZoomOutBtn");
 const editorAspectRatioSelect = document.getElementById(
   "editorAspectRatioSelect",
 );
@@ -239,6 +251,31 @@ const gallerySelectionList = document.getElementById("gallerySelectionList");
 const gallerySelectionEmpty = document.getElementById("gallerySelectionEmpty");
 const galleryDoneBtn = document.getElementById("galleryDoneBtn");
 
+const splitDetails = document.getElementById("splitDetails");
+const splitLayoutSelect = document.getElementById("splitLayoutSelect");
+const splitCanvasPresetSelect = document.getElementById("splitCanvasPresetSelect");
+const splitSelectionList = document.getElementById("splitSelectionList");
+const splitSelectionEmpty = document.getElementById("splitSelectionEmpty");
+const splitSelectionCount = document.getElementById("splitSelectionCount");
+const splitOutputLayoutSelect = document.getElementById("splitOutputLayoutSelect");
+const splitWidthRow = document.getElementById("splitWidthRow");
+const splitCustomWidth = document.getElementById("splitCustomWidth");
+const splitCaptionInput = document.getElementById("splitCaptionInput");
+const splitShortcodeOutput = document.getElementById("splitShortcodeOutput");
+const splitCombineBtn = document.getElementById("splitCombineBtn");
+const splitCopyShortcodeBtn = document.getElementById("splitCopyShortcodeBtn");
+
+const SPLIT_CANVAS_PRESETS = {
+  "16-9": { width: 1920, height: 1080 },
+  "4-3": { width: 1600, height: 1200 },
+};
+
+function getSplitCanvasSizeFromPreset() {
+  const selectedPresetKey = splitCanvasPresetSelect?.value;
+  const selectedPreset = SPLIT_CANVAS_PRESETS[selectedPresetKey];
+  return selectedPreset || SPLIT_CANVAS_PRESETS["16-9"];
+}
+
 const layoutSelect = document.getElementById("layoutSelect");
 const widthRow = document.getElementById("widthRow");
 const customWidth = document.getElementById("customWidth");
@@ -272,6 +309,7 @@ let editorSettingsWasOpen = false;
 const imageEditState = new Map();
 let persistedImageEdits = {};
 let scanningPhotoDate = false;
+let selectedSplitItems = new Map();
 let selectedGalleryItems = new Map();
 let currentGalleryHistoryId = null;
 let gallerySaveTimer = null;
@@ -458,6 +496,13 @@ const imageEditor = createImageEditorController({
   backgroundContentEl: editorBackgroundContent,
   cropHintEl: editorCropHint,
   historyInfoEl: editorHistoryInfo,
+  splitReframeControlsEl: editorSplitReframeControls,
+  splitMoveUpBtn: editorSplitMoveUpBtn,
+  splitMoveDownBtn: editorSplitMoveDownBtn,
+  splitMoveLeftBtn: editorSplitMoveLeftBtn,
+  splitMoveRightBtn: editorSplitMoveRightBtn,
+  splitZoomInBtn: editorSplitZoomInBtn,
+  splitZoomOutBtn: editorSplitZoomOutBtn,
   onBack: closeImageEditor,
   onStatus: (message) => {
     setStatus(message);
@@ -539,6 +584,7 @@ saveSettingsBtn.addEventListener("click", () => {
     exportPathLabel: (exportPathInput.value || "").trim(),
     photoScanPages: parsePhotoScanPages(photoScanPagesSelect.value),
     galleryMode: parseGalleryMode(settings.galleryMode),
+    splitMode: parseSplitMode(settings.splitMode),
     exportMaxWidth: parseExportMaxWidth(exportMaxWidthInput.value),
     exportTargetKb: parseExportTargetKb(exportTargetKbInput.value),
     exportFormat: parseExportFormat(exportFormatSelect.value),
@@ -547,12 +593,14 @@ saveSettingsBtn.addEventListener("click", () => {
   exportPathInput.value = settings.exportPathLabel;
   photoScanPagesSelect.value = String(settings.photoScanPages);
   galleryModeCheckbox.checked = parseGalleryMode(settings.galleryMode);
+  splitModeCheckbox.checked = parseSplitMode(settings.splitMode);
   exportMaxWidthInput.value = String(settings.exportMaxWidth);
   exportTargetKbInput.value = String(settings.exportTargetKb);
   exportFormatSelect.value = settings.exportFormat;
   saveSettings();
   applyGridColumns();
   applyGalleryModeUI();
+  applySplitModeUI();
   renderResults(currentResults, { append: false });
   updateExportDirectoryUI();
   setStatus("Settings saved.");
@@ -560,6 +608,14 @@ saveSettingsBtn.addEventListener("click", () => {
 
 galleryModeCheckbox.addEventListener("change", () => {
   const enabled = Boolean(galleryModeCheckbox.checked);
+  // Disable split mode if enabling gallery mode
+  if (enabled && splitModeCheckbox.checked) {
+    splitModeCheckbox.checked = false;
+    settings = {
+      ...settings,
+      splitMode: false,
+    };
+  }
   settings = {
     ...settings,
     galleryMode: enabled,
@@ -570,8 +626,71 @@ galleryModeCheckbox.addEventListener("change", () => {
   setStatus(enabled ? "Gallery mode enabled." : "Gallery mode disabled.");
 });
 
+splitModeCheckbox.addEventListener("change", () => {
+  const enabled = Boolean(splitModeCheckbox.checked);
+  // Disable gallery mode if enabling split mode
+  if (enabled && galleryModeCheckbox.checked) {
+    galleryModeCheckbox.checked = false;
+    settings = {
+      ...settings,
+      galleryMode: false,
+    };
+  }
+  settings = {
+    ...settings,
+    splitMode: enabled,
+  };
+  saveSettings();
+  applySplitModeUI();
+  renderResults(currentResults, { append: false });
+  setStatus(enabled ? "Split mode enabled." : "Split mode disabled.");
+});
+
 selectExportDirBtn.addEventListener("click", chooseExportDirectory);
 clearExportDirBtn.addEventListener("click", clearExportDirectory);
+
+splitLayoutSelect.addEventListener("change", () => {
+  const splitCount = splitLayoutSelect.value === "3" ? 3 : 2;
+  splitSelectionCount.textContent = String(splitCount);
+  // Trim selected items if switching to a smaller layout
+  if (selectedSplitItems.size > splitCount) {
+    const itemsArray = [...selectedSplitItems.entries()];
+    selectedSplitItems.clear();
+    itemsArray.slice(0, splitCount).forEach(([id, item]) => {
+      selectedSplitItems.set(id, item);
+    });
+    updateSplitSelectionList();
+    renderResults(currentResults, { append: false });
+  }
+  updateSplitCombineButtonState();
+  regenerateSplitOutputs();
+});
+
+splitOutputLayoutSelect.addEventListener("change", () => {
+  updateSplitWidthVisibility();
+  regenerateSplitOutputs();
+});
+
+function syncSplitPresetFromDimensions() {
+  if (!splitCanvasPresetSelect || !SPLIT_CANVAS_PRESETS[splitCanvasPresetSelect.value]) {
+    splitCanvasPresetSelect.value = "16-9";
+  }
+}
+
+splitCanvasPresetSelect?.addEventListener("change", () => {
+  syncSplitPresetFromDimensions();
+  regenerateSplitOutputs();
+});
+
+splitCustomWidth.addEventListener("input", regenerateSplitOutputs);
+splitCaptionInput.addEventListener("input", regenerateSplitOutputs);
+
+splitCombineBtn.addEventListener("click", handleSplitCombine);
+splitCopyShortcodeBtn.addEventListener("click", async () => {
+  await copyToClipboard(splitShortcodeOutput.value, "Shortcode copied!");
+});
+
+syncSplitPresetFromDimensions();
 
 galleryTitleInput.addEventListener("input", scheduleGalleryAutoSave);
 galleryDescriptionInput.addEventListener("input", scheduleGalleryAutoSave);
@@ -696,6 +815,26 @@ resultsEl.addEventListener("click", (event) => {
     }
 
     toggleGallerySelection(pageId, {
+      additive: true,
+      forceChecked: null,
+    });
+    return;
+  }
+
+  if (isSplitMode()) {
+    if (
+      target instanceof HTMLInputElement &&
+      target.classList.contains("result-select")
+    ) {
+      toggleSplitSelection(pageId, {
+        additive: true,
+        forceChecked: target.checked,
+      });
+      event.stopPropagation();
+      return;
+    }
+
+    toggleSplitSelection(pageId, {
       additive: true,
       forceChecked: null,
     });
@@ -1260,6 +1399,7 @@ function setSearchStatus() {
 function renderResults(items, options = {}) {
   const { append = false } = options;
   const galleryMode = isGalleryMode();
+  const splitMode = isSplitMode();
   const fragment = document.createDocumentFragment();
 
   if (!append) {
@@ -1284,6 +1424,18 @@ function renderResults(items, options = {}) {
         </div>
       `;
       li.classList.toggle("active", selectedGalleryItems.has(item.pageId));
+    } else if (splitMode) {
+      li.innerHTML = `
+        <div class="result-head">
+          <input class="result-select" type="checkbox" ${selectedSplitItems.has(item.pageId) ? "checked" : ""} />
+        </div>
+        <img src="${escapeAttribute(item.thumbnailUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" decoding="async" fetchpriority="low" />
+        <div class="result-text">
+          <h3>${escapeHtml(item.title)}</h3>
+          <p>${escapeHtml(item.licenseShort)}</p>
+        </div>
+      `;
+      li.classList.toggle("active", selectedSplitItems.has(item.pageId));
     } else {
       li.innerHTML = `
         <img src="${escapeAttribute(item.thumbnailUrl)}" alt="${escapeAttribute(item.title)}" loading="lazy" decoding="async" fetchpriority="low" />
@@ -1303,6 +1455,11 @@ function renderResults(items, options = {}) {
 function selectImage(pageId) {
   if (isGalleryMode()) {
     toggleGallerySelection(pageId, { additive: true });
+    return;
+  }
+
+  if (isSplitMode()) {
+    toggleSplitSelection(pageId, { additive: true });
     return;
   }
 
@@ -1472,10 +1629,17 @@ function hideDetails() {
   shortcodeOutput.value = "";
   if (isGalleryMode()) {
     emptyState.classList.add("hidden");
+    splitDetails.classList.add("hidden");
     galleryDetails.classList.remove("hidden");
     updateGallerySelectionList();
+  } else if (isSplitMode()) {
+    emptyState.classList.add("hidden");
+    galleryDetails.classList.add("hidden");
+    splitDetails.classList.remove("hidden");
+    updateSplitSelectionList();
   } else {
     galleryDetails.classList.add("hidden");
+    splitDetails.classList.add("hidden");
     emptyState.classList.remove("hidden");
   }
   updateDownloadButtonState();
@@ -1485,12 +1649,23 @@ function showDetails() {
   if (isGalleryMode()) {
     emptyState.classList.add("hidden");
     detailsEl.classList.add("hidden");
+    splitDetails.classList.add("hidden");
     galleryDetails.classList.remove("hidden");
     updateGallerySelectionList();
     return;
   }
 
+  if (isSplitMode()) {
+    emptyState.classList.add("hidden");
+    detailsEl.classList.add("hidden");
+    galleryDetails.classList.add("hidden");
+    splitDetails.classList.remove("hidden");
+    updateSplitSelectionList();
+    return;
+  }
+
   galleryDetails.classList.add("hidden");
+  splitDetails.classList.add("hidden");
   emptyState.classList.add("hidden");
   detailsEl.classList.remove("hidden");
 }
@@ -1574,6 +1749,41 @@ function getDisplayImageUrl(image, context = "finder") {
   }
 
   return image?.thumbnailUrl || image?.imageUrl || "";
+}
+
+function buildSplitCacheImageUrl(editKey) {
+  if (typeof editKey !== "string" || !editKey.trim()) {
+    return "";
+  }
+
+  return `${SPLIT_CACHE_URL_PREFIX}${editKey.trim()}`;
+}
+
+function parseSplitCacheImageUrl(url) {
+  if (typeof url !== "string" || !url.startsWith(SPLIT_CACHE_URL_PREFIX)) {
+    return "";
+  }
+
+  const key = url.slice(SPLIT_CACHE_URL_PREFIX.length).trim();
+  return key || "";
+}
+
+async function resolvePersistedImageUrl(url) {
+  if (typeof url !== "string" || !url.trim()) {
+    return "";
+  }
+
+  const cacheKey = parseSplitCacheImageUrl(url);
+  if (!cacheKey) {
+    return url;
+  }
+
+  const cachedBlob = await loadPreviewBlobFromCache(cacheKey);
+  if (!(cachedBlob instanceof Blob)) {
+    return "";
+  }
+
+  return cachePreviewObjectUrl(cacheKey, cachedBlob);
 }
 
 function normalizeOperationsFromEdit(edit) {
@@ -1776,13 +1986,18 @@ async function resolveDownloadSourceUrlForImage(image, context = "finder") {
   }
 
   if (!edit || !operations.length) {
+    const persistedSourceUrl = await resolvePersistedImageUrl(
+      image?.imageUrl || image?.thumbnailUrl || "",
+    );
     return {
-      sourceUrl: image?.imageUrl || image?.thumbnailUrl || "",
+      sourceUrl: persistedSourceUrl,
       isEdited: false,
     };
   }
 
-  const sourceUrl = image?.imageUrl || image?.thumbnailUrl || "";
+  const sourceUrl = await resolvePersistedImageUrl(
+    image?.imageUrl || image?.thumbnailUrl || "",
+  );
   if (!sourceUrl) {
     return {
       sourceUrl: "",
@@ -2154,18 +2369,25 @@ function openHistoryGalleryEditor() {
   });
 }
 
-function openSingleVaultEditor(entryId) {
+async function openSingleVaultEditor(entryId) {
   const entry = historyEntries.find((item) => item.id === entryId);
   if (!entry || entry.type === "gallery") {
     setStatus("Select a single asset first.");
     return;
   }
 
-  const imageUrl = entry.imageUrl || entry.thumbnailUrl;
+  const rawImageUrl = entry.imageUrl || entry.thumbnailUrl || "";
+  const rawThumbnailUrl = entry.thumbnailUrl || "";
+  const imageUrl = await resolvePersistedImageUrl(rawImageUrl);
   if (!imageUrl) {
     setStatus("No image available for editing.");
     return;
   }
+
+  const resolvedThumbnailUrl =
+    rawThumbnailUrl && rawThumbnailUrl !== rawImageUrl
+      ? await resolvePersistedImageUrl(rawThumbnailUrl)
+      : imageUrl;
 
   const editSource = {
     pageId: entry.pageId,
@@ -2174,7 +2396,11 @@ function openSingleVaultEditor(entryId) {
     fileName: entry.fileName,
     title: entry.title,
   };
-  const editKey = buildImageEditKey(editSource, "finder");
+  const finderEditKey = buildImageEditKey(editSource, "finder");
+  const editKey =
+    entry.isSplitScreen && typeof entry.splitEditKey === "string" && entry.splitEditKey
+      ? entry.splitEditKey
+      : finderEditKey;
   const existingEdit = getImageEditState(editKey);
 
   void openImageEditor({
@@ -2182,9 +2408,18 @@ function openSingleVaultEditor(entryId) {
     startImageUrl: existingEdit?.previewUrl || imageUrl,
     title: entry.title || "Vault image",
     fileName: entry.fileName || getImageFileName(entry),
-    thumbnailUrl: entry.thumbnailUrl,
+    thumbnailUrl: resolvedThumbnailUrl || imageUrl,
     pageId: Number.isInteger(entry.pageId) ? entry.pageId : null,
     editKey,
+    isSplitScreen: Boolean(entry.isSplitScreen),
+    splitLayout: Number.isInteger(entry.splitLayout) ? entry.splitLayout : null,
+    splitImages: Array.isArray(entry.splitImages) ? entry.splitImages : [],
+    canvasWidth: Number.isFinite(Number(entry.canvasWidth))
+      ? Number(entry.canvasWidth)
+      : null,
+    canvasHeight: Number.isFinite(Number(entry.canvasHeight))
+      ? Number(entry.canvasHeight)
+      : null,
     history: Array.isArray(existingEdit?.history) ? existingEdit.history : [],
     operations: Array.isArray(existingEdit?.operations)
       ? existingEdit.operations
@@ -2795,6 +3030,7 @@ function applySettingsToUI() {
   exportPathInput.value = settings.exportPathLabel || "";
   photoScanPagesSelect.value = String(settings.photoScanPages);
   galleryModeCheckbox.checked = parseGalleryMode(settings.galleryMode);
+  splitModeCheckbox.checked = parseSplitMode(settings.splitMode);
   exportMaxWidthInput.value = String(settings.exportMaxWidth);
   exportTargetKbInput.value = String(settings.exportTargetKb);
   exportFormatSelect.value = parseExportFormat(settings.exportFormat);
@@ -2817,6 +3053,10 @@ function parsePhotoScanPages(value) {
 }
 
 function parseGalleryMode(value) {
+  return value === true;
+}
+
+function parseSplitMode(value) {
   return value === true;
 }
 
@@ -2883,6 +3123,10 @@ function isGalleryMode() {
   return parseGalleryMode(settings.galleryMode);
 }
 
+function isSplitMode() {
+  return parseSplitMode(settings.splitMode);
+}
+
 function applyGridColumns() {
   document.documentElement.style.setProperty(
     "--finder-grid-columns",
@@ -2893,6 +3137,7 @@ function applyGridColumns() {
 function applyGalleryModeUI() {
   if (isGalleryMode()) {
     selectedImage = null;
+    splitDetails.classList.add("hidden");
     galleryDetails.classList.remove("hidden");
     detailsEl.classList.add("hidden");
     emptyState.classList.add("hidden");
@@ -2907,6 +3152,11 @@ function applyGalleryModeUI() {
   resetGalleryDoneButtonState();
   updateGallerySelectionList();
 
+  if (isSplitMode()) {
+    applySplitModeUI();
+    return;
+  }
+
   if (selectedImage) {
     showDetails();
   } else {
@@ -2915,6 +3165,432 @@ function applyGalleryModeUI() {
   }
 
   updateDownloadButtonState();
+}
+
+function applySplitModeUI() {
+  if (isSplitMode()) {
+    selectedImage = null;
+    galleryDetails.classList.add("hidden");
+    splitDetails.classList.remove("hidden");
+    detailsEl.classList.add("hidden");
+    emptyState.classList.add("hidden");
+    updateSplitSelectionList();
+    updateDownloadButtonState();
+    return;
+  }
+
+  splitDetails.classList.add("hidden");
+  selectedSplitItems.clear();
+  updateSplitSelectionList();
+
+  if (selectedImage) {
+    showDetails();
+  } else {
+    detailsEl.classList.add("hidden");
+    emptyState.classList.remove("hidden");
+  }
+
+  updateDownloadButtonState();
+}
+
+function toggleSplitSelection(pageId, options = {}) {
+  const { additive = false, forceChecked = null } = options;
+  const selectedItem = currentResults.find((item) => item.pageId === pageId);
+  if (!selectedItem) {
+    return;
+  }
+
+  const maxSplitCount = splitLayoutSelect.value === "3" ? 3 : 2;
+
+  if (!additive && forceChecked === null) {
+    selectedSplitItems.clear();
+  }
+
+  const isSelected = selectedSplitItems.has(pageId);
+  const shouldSelect =
+    forceChecked === null ? !isSelected : Boolean(forceChecked);
+
+  if (shouldSelect) {
+    // Check if we've reached the limit
+    if (selectedSplitItems.size >= maxSplitCount) {
+      // Remove the first item to make room
+      const firstKey = selectedSplitItems.keys().next().value;
+      selectedSplitItems.delete(firstKey);
+    }
+    selectedSplitItems.set(pageId, selectedItem);
+  } else {
+    selectedSplitItems.delete(pageId);
+  }
+
+  showDetails();
+  updateSplitSelectionList();
+  syncSplitResultSelectionUi();
+  updateSplitCombineButtonState();
+
+  if (isSmallScreen()) {
+    setMobileDetailsCollapsed(false);
+  }
+}
+
+function updateSplitSelectionList() {
+  if (!splitSelectionList || !splitSelectionEmpty) {
+    return;
+  }
+
+  splitSelectionList.innerHTML = "";
+  const selectedItems = [...selectedSplitItems.values()];
+  const maxSplitCount = splitLayoutSelect.value === "3" ? 3 : 2;
+  splitSelectionEmpty.classList.toggle("hidden", selectedItems.length > 0);
+
+  selectedItems.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "gallery-item";
+
+    const preview = document.createElement("img");
+    preview.src = item.thumbnailUrl;
+    preview.alt = item.title;
+    preview.loading = "lazy";
+
+    const title = document.createElement("div");
+    title.className = "gallery-item-title";
+    title.textContent = `${index + 1}. ${item.title}`;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    setButtonIconLabel(removeBtn, "fa-solid fa-xmark", "Remove");
+    removeBtn.addEventListener("click", () => {
+      selectedSplitItems.delete(item.pageId);
+      updateSplitSelectionList();
+      syncSplitResultSelectionUi();
+      updateSplitCombineButtonState();
+      regenerateSplitOutputs();
+    });
+
+    row.appendChild(preview);
+    row.appendChild(title);
+    row.appendChild(removeBtn);
+    splitSelectionList.appendChild(row);
+  });
+
+  // Update the selection count hint
+  splitSelectionCount.textContent = String(maxSplitCount);
+  updateSplitCombineButtonState();
+  regenerateSplitOutputs();
+}
+
+function syncSplitResultSelectionUi() {
+  [...resultsEl.children].forEach((node, index) => {
+    const item = currentResults[index];
+    if (!item) {
+      return;
+    }
+
+    const isSelected = selectedSplitItems.has(item.pageId);
+    node.classList.toggle("active", isSelected);
+
+    const checkbox = node.querySelector(".result-select");
+    if (checkbox instanceof HTMLInputElement) {
+      checkbox.checked = isSelected;
+    }
+  });
+}
+
+function updateSplitCombineButtonState() {
+  if (!splitCombineBtn) {
+    return;
+  }
+
+  const maxSplitCount = splitLayoutSelect.value === "3" ? 3 : 2;
+  const hasEnoughImages = selectedSplitItems.size === maxSplitCount;
+  splitCombineBtn.disabled = !hasEnoughImages;
+}
+
+function updateSplitWidthVisibility() {
+  if (!splitWidthRow || !splitOutputLayoutSelect) {
+    return;
+  }
+  splitWidthRow.classList.toggle("hidden", splitOutputLayoutSelect.value !== "custom");
+}
+
+function buildSplitFileName(images) {
+  if (!images || images.length === 0) {
+    return `split-${Date.now()}`;
+  }
+
+  // Extract clean names from each image
+  const names = images.map(img => {
+    const title = img.title || img.fileName || "image";
+    // Remove "File:" prefix if present
+    const cleaned = title.replace(/^File:/i, "").trim();
+    // Slugify and take first 20 chars
+    return slugifyFileName(removeCommonImageExtension(cleaned)).slice(0, 20);
+  });
+
+  // Join with underscore
+  return names.join("_") || `split-${Date.now()}`;
+}
+
+function buildSplitAttribution(images) {
+  if (!images || images.length === 0) {
+    return "";
+  }
+
+  const positionLabels =
+    images.length === 2 ? ["Left", "Right"] : ["Left", "Center", "Right"];
+  const attributions = [];
+
+  images.forEach((image, index) => {
+    const position = positionLabels[index] || `Image ${index + 1}`;
+    const author = normalizeAuthor(image.author || "");
+    const hasKnownAuthor = Boolean(author);
+    const license =
+      image.licenseShort && image.licenseShort !== "Unknown"
+        ? image.licenseShort.trim()
+        : "Unknown license";
+
+    const attribution = hasKnownAuthor
+      ? `${position}: Photo by ${author} © ${license}`
+      : `${position}: © ${license}`;
+    
+    attributions.push(attribution);
+  });
+
+  return attributions.join(". ");
+}
+
+function buildSplitCaption(rawCaption, images) {
+  const baseCaption = (rawCaption || "").trim().replace(/[.\s]+$/, "");
+  const suffix = buildSplitAttribution(images);
+
+  if (!suffix) {
+    return baseCaption;
+  }
+
+  return baseCaption ? `${baseCaption}. ${suffix}` : suffix;
+}
+
+function regenerateSplitOutputs() {
+  if (!splitShortcodeOutput) {
+    return;
+  }
+
+  const selectedItems = [...selectedSplitItems.values()];
+  if (selectedItems.length === 0) {
+    splitShortcodeOutput.value = "";
+    return;
+  }
+
+  const layout = splitOutputLayoutSelect?.value || "normal";
+  const customWidth = splitCustomWidth?.value || "600";
+  const rawCaption = splitCaptionInput?.value || "";
+  
+  // Build proper caption with attribution
+  const caption = buildSplitCaption(rawCaption, selectedItems);
+  
+  // Generate stable filename based on source images
+  const baseFileName = buildSplitFileName(selectedItems);
+  const fileName = `${baseFileName}.${getActiveExportFormat()}`;
+  const relativePath = fileName;
+  const localImagePath = `/images/${relativePath}`;
+  const escapedUrl = escapeShortcodeValue(localImagePath);
+  const escapedCaption = escapeShortcodeValue(caption);
+
+  let shortcode = "";
+  const widthValue = Number.parseInt(customWidth, 10);
+  const safeWidth = Number.isFinite(widthValue) && widthValue > 0 ? widthValue : 600;
+
+  switch (layout) {
+    case "large":
+      shortcode = `{{< photo-large src="${escapedUrl}" caption="${escapedCaption}" >}}`;
+      break;
+    case "xlarge":
+      shortcode = `{{< photo-xlarge src="${escapedUrl}" caption="${escapedCaption}" >}}`;
+      break;
+    case "custom":
+      shortcode = `{{< photo-custom src="${escapedUrl}" width="${safeWidth}" caption="${escapedCaption}" >}}`;
+      break;
+    case "cover":
+      shortcode = `image: "/images/${escapeShortcodeValue(relativePath)}"\nimageCaption: "${escapedCaption}"`;
+      break;
+    default:
+      shortcode = `{{< photo-normal src="${escapedUrl}" caption="${escapedCaption}" >}}`;
+      break;
+  }
+
+  splitShortcodeOutput.value = shortcode;
+}
+
+async function handleSplitCombine() {
+  const selectedItems = [...selectedSplitItems.values()];
+  const maxSplitCount = splitLayoutSelect.value === "3" ? 3 : 2;
+
+  if (selectedItems.length !== maxSplitCount) {
+    setStatus(`Please select exactly ${maxSplitCount} images.`);
+    return;
+  }
+
+  const selectedCanvasSize = getSplitCanvasSizeFromPreset();
+  const canvasWidth = selectedCanvasSize.width;
+  const canvasHeight = selectedCanvasSize.height;
+  const rawCaption = splitCaptionInput.value.trim();
+
+  setStatus("Creating split screen canvas...");
+  showProgressNotice("Loading images...");
+  
+  try {
+    // Create a combined canvas with proper cropping
+    const combinedCanvas = await createSplitCanvas(
+      selectedItems,
+      canvasWidth,
+      canvasHeight,
+      maxSplitCount
+    );
+
+    const timestamp = Date.now();
+    const editKey = `split:${timestamp}`;
+    const persistedSplitUrl = buildSplitCacheImageUrl(editKey);
+
+    // Generate stable filename based on source images
+    const exportFormat = getActiveExportFormat();
+    const exportExt = exportFormat === "jpg" ? "jpg" : exportFormat === "png" ? "png" : "webp";
+    const baseFileName = buildSplitFileName(selectedItems);
+    const fileName = `${baseFileName}.${exportExt}`;
+
+    // Build proper caption with attribution
+    const caption = buildSplitCaption(rawCaption, selectedItems);
+
+    // Open editor immediately from in-memory canvas for a faster transition
+    const splitMeta = {
+      imageUrl: persistedSplitUrl,
+      startImageUrl: "",
+      sourceCanvas: combinedCanvas,
+      title: `Split Screen (${maxSplitCount} images)`,
+      fileName,
+      editKey,
+      history: [],
+      operations: [],
+      isSplitScreen: true,
+      splitImages: selectedItems.map((item, index) => ({
+        pageId: item.pageId,
+        imageUrl: item.imageUrl || item.thumbnailUrl,
+        thumbnailUrl: item.thumbnailUrl,
+        title: item.title,
+        index,
+      })),
+      splitLayout: maxSplitCount,
+      canvasWidth,
+      canvasHeight,
+      caption,
+    };
+
+    const openEditorPromise = openImageEditor(splitMeta);
+    updateProgressNotice("Saving split image...");
+
+    // Get export format from settings
+    const exportMimeType = exportFormat === "jpg" ? "image/jpeg" : 
+                          exportFormat === "png" ? "image/png" : "image/webp";
+    const exportQuality = exportFormat === "jpg" ? 0.92 : 0.90;
+
+    // Convert canvas to blob with proper format
+    const blob = await new Promise((resolve, reject) => {
+      combinedCanvas.toBlob((b) => {
+        if (b) resolve(b);
+        else reject(new Error("Failed to create canvas blob"));
+      }, exportMimeType, exportQuality);
+    });
+
+    await savePreviewBlobToCache(editKey, blob);
+
+    // Save to vault/history
+    saveToHistory({
+      pageId: null,
+      title: splitMeta.title,
+      thumbnailUrl: persistedSplitUrl,
+      imageUrl: persistedSplitUrl,
+      fileName,
+      copiedText: splitShortcodeOutput?.value || "",
+      caption,
+      layout: splitOutputLayoutSelect?.value || "normal",
+      isSplitScreen: true,
+      splitLayout: maxSplitCount,
+      splitImages: splitMeta.splitImages,
+      canvasWidth,
+      canvasHeight,
+      splitEditKey: editKey,
+    });
+
+    await openEditorPromise;
+    hideProgressNotice();
+    setStatus("Split canvas created. Adjust framing in editor.");
+  } catch (error) {
+    console.error(error);
+    hideProgressNotice();
+    setStatus("Failed to create split canvas. Please try again.");
+  }
+}
+
+async function createSplitCanvas(images, canvasWidth, canvasHeight, splitCount) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Canvas context unavailable");
+  }
+
+  // Fill with white background
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Calculate exact dimensions for each section
+  const sectionWidth = canvasWidth / splitCount;
+
+  // Load images in parallel for better performance
+  const loadedImages = await Promise.all(
+    images.map(image => loadImageElement(image.imageUrl || image.thumbnailUrl))
+  );
+
+  // Draw each image in its section with proper cropping
+  for (let i = 0; i < loadedImages.length; i++) {
+    const img = loadedImages[i];
+    const sectionX = i * sectionWidth;
+
+    // Calculate how to crop the image to fit the section perfectly
+    const targetAspect = sectionWidth / canvasHeight;
+    const imgAspect = img.width / img.height;
+
+    let srcX = 0, srcY = 0, srcWidth = img.width, srcHeight = img.height;
+
+    if (imgAspect > targetAspect) {
+      // Image is wider - crop sides (center crop horizontally)
+      srcWidth = img.height * targetAspect;
+      srcX = (img.width - srcWidth) / 2;
+    } else {
+      // Image is taller - crop top/bottom (center crop vertically)
+      srcHeight = img.width / targetAspect;
+      srcY = (img.height - srcHeight) / 2;
+    }
+
+    // Draw cropped image to fill the exact section
+    ctx.drawImage(
+      img,
+      srcX, srcY, srcWidth, srcHeight,
+      sectionX, 0, sectionWidth, canvasHeight
+    );
+  }
+
+  return canvas;
+}
+
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+    img.src = url;
+  });
 }
 
 function toggleGallerySelection(pageId, options = {}) {
@@ -3158,6 +3834,13 @@ function saveToHistory({
   fileName,
   copiedText,
   layout,
+  caption = "",
+  isSplitScreen = false,
+  splitLayout = null,
+  splitImages = [],
+  canvasWidth = null,
+  canvasHeight = null,
+  splitEditKey = "",
   downloaded = false,
 }) {
   const nowIso = new Date().toISOString();
@@ -3193,6 +3876,36 @@ function saveToHistory({
       fileName: fileName || existingEntry.fileName,
       copiedText: copiedText || existingEntry.copiedText || "",
       layout: layout || existingEntry.layout || "",
+      caption:
+        typeof caption === "string" && caption.trim()
+          ? caption
+          : existingEntry.caption || "",
+      isSplitScreen: Boolean(isSplitScreen || existingEntry.isSplitScreen),
+      splitLayout: Number.isInteger(splitLayout)
+        ? splitLayout
+        : Number.isInteger(existingEntry.splitLayout)
+          ? existingEntry.splitLayout
+          : null,
+      splitImages:
+        Array.isArray(splitImages) && splitImages.length > 0
+          ? splitImages
+          : Array.isArray(existingEntry.splitImages)
+            ? existingEntry.splitImages
+            : [],
+      canvasWidth: Number.isFinite(Number(canvasWidth))
+        ? Number(canvasWidth)
+        : Number.isFinite(Number(existingEntry.canvasWidth))
+          ? Number(existingEntry.canvasWidth)
+          : null,
+      canvasHeight: Number.isFinite(Number(canvasHeight))
+        ? Number(canvasHeight)
+        : Number.isFinite(Number(existingEntry.canvasHeight))
+          ? Number(existingEntry.canvasHeight)
+          : null,
+      splitEditKey:
+        typeof splitEditKey === "string" && splitEditKey.trim()
+          ? splitEditKey.trim()
+          : existingEntry.splitEditKey || "",
       downloaded: Boolean(downloaded || existingEntry.downloaded),
       copiedAt: nowIso,
     };
@@ -3211,6 +3924,18 @@ function saveToHistory({
       fileName,
       copiedText,
       layout,
+      caption: typeof caption === "string" ? caption : "",
+      isSplitScreen: Boolean(isSplitScreen),
+      splitLayout: Number.isInteger(splitLayout) ? splitLayout : null,
+      splitImages: Array.isArray(splitImages) ? splitImages : [],
+      canvasWidth: Number.isFinite(Number(canvasWidth))
+        ? Number(canvasWidth)
+        : null,
+      canvasHeight: Number.isFinite(Number(canvasHeight))
+        ? Number(canvasHeight)
+        : null,
+      splitEditKey:
+        typeof splitEditKey === "string" ? splitEditKey.trim() : "",
       downloaded: Boolean(downloaded),
       copiedAt: nowIso,
     };
@@ -3288,10 +4013,19 @@ function renderHistory() {
       previewNode = stack;
     } else {
       preview = document.createElement("img");
-      preview.src = getDisplayImageUrl(entry, "finder");
+      const rawPreviewUrl = getDisplayImageUrl(entry, "finder");
+      preview.src = parseSplitCacheImageUrl(rawPreviewUrl) ? "" : rawPreviewUrl;
       preview.alt = entry.title || "History image";
       preview.loading = "lazy";
       previewNode = preview;
+
+      if (parseSplitCacheImageUrl(rawPreviewUrl)) {
+        void resolvePersistedImageUrl(rawPreviewUrl).then((resolvedUrl) => {
+          if (resolvedUrl && preview) {
+            preview.src = resolvedUrl;
+          }
+        });
+      }
     }
 
     const meta = document.createElement("div");
@@ -3349,7 +4083,7 @@ function renderHistory() {
         const generated = buildShortcodeForImage(entry, {
           layout: nextLayout,
           customWidth: widthInput.value,
-          caption: "",
+          caption: entry.caption || "",
         });
 
         widthField.classList.toggle("hidden", nextLayout !== "custom");
@@ -5041,6 +5775,37 @@ function sanitizeHistoryEntries(parsed) {
       imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
       fileName: typeof item.fileName === "string" ? item.fileName : "",
       layout: typeof item.layout === "string" ? item.layout : "",
+      caption: typeof item.caption === "string" ? item.caption : "",
+      isSplitScreen: Boolean(item.isSplitScreen),
+      splitLayout: Number.isInteger(Number(item.splitLayout))
+        ? Number(item.splitLayout)
+        : null,
+      splitImages: Array.isArray(item.splitImages)
+        ? item.splitImages
+            .filter((splitItem) => splitItem && typeof splitItem === "object")
+            .map((splitItem, splitIndex) => ({
+              pageId: normalizePageId(splitItem.pageId),
+              title:
+                typeof splitItem.title === "string" ? splitItem.title : "",
+              thumbnailUrl:
+                typeof splitItem.thumbnailUrl === "string"
+                  ? splitItem.thumbnailUrl
+                  : "",
+              imageUrl:
+                typeof splitItem.imageUrl === "string" ? splitItem.imageUrl : "",
+              index: Number.isInteger(Number(splitItem.index))
+                ? Number(splitItem.index)
+                : splitIndex,
+            }))
+        : [],
+      canvasWidth: Number.isFinite(Number(item.canvasWidth))
+        ? Number(item.canvasWidth)
+        : null,
+      canvasHeight: Number.isFinite(Number(item.canvasHeight))
+        ? Number(item.canvasHeight)
+        : null,
+      splitEditKey:
+        typeof item.splitEditKey === "string" ? item.splitEditKey : "",
       galleryTitle:
         typeof item.galleryTitle === "string" ? item.galleryTitle : "",
       galleryDescription:
@@ -5181,6 +5946,7 @@ function loadSettings() {
           : "",
       photoScanPages: parsePhotoScanPages(parsed?.photoScanPages),
       galleryMode: parseGalleryMode(parsed?.galleryMode),
+      splitMode: parseSplitMode(parsed?.splitMode),
       exportMaxWidth: parseExportMaxWidth(parsed?.exportMaxWidth),
       exportTargetKb: parseExportTargetKb(parsed?.exportTargetKb),
       exportFormat: parseExportFormat(parsed?.exportFormat),
@@ -5898,6 +6664,7 @@ async function copyToClipboard(value, successMessage) {
 }
 
 updateWidthVisibility();
+updateSplitWidthVisibility();
 updateDownloadButtonState();
 syncMobileDetailsState();
 initializeEditorBackgroundPicker();
@@ -5909,6 +6676,7 @@ if (imageEditsNeedsCompaction) {
 applySettingsToUI();
 applyGridColumns();
 applyGalleryModeUI();
+applySplitModeUI();
 historyEntries = loadHistory();
 renderHistory();
 void initHistoryStorageSync();

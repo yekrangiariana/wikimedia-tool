@@ -168,6 +168,84 @@
             </div>
           </article>
 
+          <article id="splitDetails" class="details hidden" aria-live="polite">
+            <div class="generator">
+              <div class="field-row">
+                <label for="splitLayoutSelect">Split layout</label>
+                <select id="splitLayoutSelect">
+                  <option value="2">2 images (side by side)</option>
+                  <option value="3">3 images (side by side)</option>
+                </select>
+              </div>
+
+              <div class="field-row">
+                <label for="splitCanvasPresetSelect">Canvas size preset</label>
+                <select id="splitCanvasPresetSelect">
+                  <option value="16-9">HD landscape (1920 × 1080, 16:9)</option>
+                  <option value="4-3">Classic landscape (1600 × 1200, 4:3)</option>
+                </select>
+              </div>
+
+              <div class="field-row">
+                <label>Selected pictures</label>
+                <div
+                  id="splitSelectionList"
+                  class="gallery-selection-list"
+                ></div>
+                <p id="splitSelectionEmpty" class="settings-note">
+                  Select <span id="splitSelectionCount">2</span> pictures from search results to create a split screen.
+                </p>
+              </div>
+
+              <div class="field-row">
+                <label for="splitOutputLayoutSelect">Output layout</label>
+                <select id="splitOutputLayoutSelect">
+                  <option value="normal">Normal image</option>
+                  <option value="large">Large image</option>
+                  <option value="xlarge">Extra large image</option>
+                  <option value="custom">Custom width image</option>
+                  <option value="cover">Cover</option>
+                </select>
+              </div>
+
+              <div class="field-row hidden" id="splitWidthRow">
+                <label for="splitCustomWidth">Custom width (px)</label>
+                <input
+                  id="splitCustomWidth"
+                  type="number"
+                  min="50"
+                  step="10"
+                  value="600"
+                />
+              </div>
+
+              <div class="field-row">
+                <label for="splitCaptionInput">Caption</label>
+                <textarea
+                  id="splitCaptionInput"
+                  rows="3"
+                  placeholder="Write your caption text"
+                ></textarea>
+              </div>
+
+              <div class="field-row">
+                <label for="splitShortcodeOutput">Generated shortcode</label>
+                <textarea id="splitShortcodeOutput" rows="4" readonly></textarea>
+              </div>
+
+              <div class="button-row button-row--finder-bottom">
+                <button id="splitCombineBtn" type="button">
+                  <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                  <span>Combine</span>
+                </button>
+                <button id="splitCopyShortcodeBtn" type="button">
+                  <i class="fa-solid fa-copy" aria-hidden="true"></i>
+                  <span>Copy</span>
+                </button>
+              </div>
+            </div>
+          </article>
+
           <article id="details" class="details hidden" aria-live="polite">
             <div class="editable-preview">
               <div class="finder-preview-actions">
@@ -843,6 +921,30 @@
             </div>
             <p id="editorDimensions" class="settings-note"></p>
             <p id="editorHistoryInfo" class="settings-note"></p>
+            <section id="editorSplitReframeControls" class="editor-split-controls hidden">
+              <h2>Split positioning</h2>
+              <div class="editor-split-controls-grid" aria-label="Split positioning controls">
+                <button id="editorSplitMoveUpBtn" type="button" aria-label="Move up">
+                  <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
+                </button>
+                <button id="editorSplitZoomInBtn" type="button" aria-label="Zoom in">
+                  <i class="fa-solid fa-magnifying-glass-plus" aria-hidden="true"></i>
+                </button>
+                <button id="editorSplitMoveLeftBtn" type="button" aria-label="Move left">
+                  <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                </button>
+                <button id="editorSplitMoveDownBtn" type="button" aria-label="Move down">
+                  <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+                </button>
+                <button id="editorSplitMoveRightBtn" type="button" aria-label="Move right">
+                  <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </button>
+                <button id="editorSplitZoomOutBtn" type="button" aria-label="Zoom out">
+                  <i class="fa-solid fa-magnifying-glass-minus" aria-hidden="true"></i>
+                </button>
+              </div>
+              <p class="settings-note">Tip: drag panel to reframe, wheel/pinch to zoom, or use these controls.</p>
+            </section>
           </aside>
         </section>
       </section>
@@ -873,6 +975,17 @@
             <span class="toggle-title">Enable gallery mode</span>
             <span class="toggle-subtitle"
               >Build reusable image collections from search results.</span
+            >
+          </span>
+        </label>
+
+        <label class="checkbox-inline" for="splitModeCheckbox">
+          <input id="splitModeCheckbox" type="checkbox" />
+          <span class="toggle-switch" aria-hidden="true"></span>
+          <span class="toggle-copy">
+            <span class="toggle-title">Enable split mode</span>
+            <span class="toggle-subtitle"
+              >Combine 2-3 images side by side on a canvas.</span
             >
           </span>
         </label>

@@ -11,7 +11,10 @@ function clamp(value, min, max) {
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.crossOrigin = "anonymous";
+    const shouldUseCors = /^https?:\/\//i.test(String(url || ""));
+    if (shouldUseCors) {
+      image.crossOrigin = "anonymous";
+    }
     image.decoding = "async";
     image.onload = () => resolve(image);
     image.onerror = () =>
@@ -178,6 +181,13 @@ export function createImageEditorController({
   backgroundContentEl,
   cropHintEl,
   historyInfoEl,
+  splitReframeControlsEl,
+  splitMoveUpBtn,
+  splitMoveDownBtn,
+  splitMoveLeftBtn,
+  splitMoveRightBtn,
+  splitZoomInBtn,
+  splitZoomOutBtn,
   onBack,
   onStatus,
   onChange,
@@ -218,6 +228,18 @@ export function createImageEditorController({
   let eraserStrokePoints = [];
   let eraserStrokePointerId = null;
   let eraserCursorPoint = null;
+  let splitReframeEnabled = false;
+  let splitSourceImages = [];
+  let splitOffsets = [];
+  let splitScales = [];
+  let splitSelectedPanelIndex = -1;
+  let splitHoverPanelIndex = -1;
+  let splitDragPanelIndex = -1;
+  let splitDragPointerId = null;
+  let splitDragStartImagePoint = null;
+  let splitDragStartOffset = null;
+  const splitTouchPointers = new Map();
+  let splitPinchStart = null;
   let colorAdjustPreviewRafId = null;
   let colorAdjustPreviewVersion = 0;
   let colorAdjustEmitTimer = null;
@@ -490,6 +512,39 @@ export function createImageEditorController({
         "hidden",
         Boolean(cropMode || backgroundMode || colorAdjustMode || eraserMode),
       );
+    }
+
+    if (splitReframeControlsEl) {
+      const showSplitControls =
+        splitReframeEnabled &&
+        !cropMode &&
+        !backgroundMode &&
+        !colorAdjustMode &&
+        !eraserMode;
+      toggleClassIfChanged(splitReframeControlsEl, "hidden", !showSplitControls);
+      const controlsDisabled = !showSplitControls || !canUseSplitReframe();
+      [
+        splitMoveUpBtn,
+        splitMoveDownBtn,
+        splitMoveLeftBtn,
+        splitMoveRightBtn,
+        splitZoomInBtn,
+        splitZoomOutBtn,
+      ].forEach((button) => {
+        setDisabledIfChanged(button, controlsDisabled);
+      });
+    }
+
+    if (
+      splitReframeEnabled &&
+      !cropMode &&
+      !backgroundMode &&
+      !colorAdjustMode &&
+      !eraserMode
+    ) {
+      overlayEl.style.cursor = splitDragPanelIndex >= 0 ? "grabbing" : "grab";
+    } else {
+      overlayEl.style.cursor = "";
     }
 
     if (historyInfoEl) {
@@ -829,8 +884,305 @@ export function createImageEditorController({
     };
   }
 
+  function getSplitPanelCount() {
+    if (!currentMeta?.splitLayout) {
+      return splitSourceImages.length;
+    }
+
+    return currentMeta.splitLayout === 3 ? 3 : 2;
+  }
+
+  function getSplitCanvasDimensions() {
+    const fallbackWidth = workingCanvas?.width || originalCanvas?.width || 1920;
+    const fallbackHeight =
+      workingCanvas?.height || originalCanvas?.height || 1080;
+
+    return {
+      width:
+        Number.isFinite(Number(currentMeta?.canvasWidth)) &&
+        Number(currentMeta.canvasWidth) > 0
+          ? Number(currentMeta.canvasWidth)
+          : fallbackWidth,
+      height:
+        Number.isFinite(Number(currentMeta?.canvasHeight)) &&
+        Number(currentMeta.canvasHeight) > 0
+          ? Number(currentMeta.canvasHeight)
+          : fallbackHeight,
+    };
+  }
+
+  function buildSplitPanelRects(width, height, panelCount) {
+    const safeCount = Math.max(1, panelCount);
+    const panelWidth = width / safeCount;
+    return Array.from({ length: safeCount }, (_, index) => ({
+      x: index * panelWidth,
+      y: 0,
+      width: panelWidth,
+      height,
+    }));
+  }
+
+  function getSplitSourceCropForPanel(index, panelRect) {
+    const source = splitSourceImages[index];
+    if (!source || !panelRect) {
+      return null;
+    }
+
+    const targetAspect = panelRect.width / Math.max(1, panelRect.height);
+    const sourceAspect = source.width / Math.max(1, source.height);
+
+    let srcWidth = source.width;
+    let srcHeight = source.height;
+    if (sourceAspect > targetAspect) {
+      srcWidth = source.height * targetAspect;
+    } else {
+      srcHeight = source.width / targetAspect;
+    }
+
+    const centerX = (source.width - srcWidth) / 2;
+    const centerY = (source.height - srcHeight) / 2;
+    const maxOffsetX = Math.max(0, (source.width - srcWidth) / 2);
+    const maxOffsetY = Math.max(0, (source.height - srcHeight) / 2);
+
+    return {
+      srcWidth,
+      srcHeight,
+      centerX,
+      centerY,
+      maxOffsetX,
+      maxOffsetY,
+    };
+  }
+
+  function clampSplitScale(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return 1;
+    }
+
+    return clamp(numeric, 1, 3);
+  }
+
+  function normalizeSplitOffsets(offsets, panelCount) {
+    const safeCount = Math.max(1, panelCount);
+    const input = Array.isArray(offsets) ? offsets : [];
+    return Array.from({ length: safeCount }, (_, index) => ({
+      x: Number.isFinite(Number(input[index]?.x)) ? Number(input[index].x) : 0,
+      y: Number.isFinite(Number(input[index]?.y)) ? Number(input[index].y) : 0,
+    }));
+  }
+
+  function normalizeSplitScales(scales, panelCount) {
+    const safeCount = Math.max(1, panelCount);
+    const input = Array.isArray(scales) ? scales : [];
+    return Array.from({ length: safeCount }, (_, index) =>
+      clampSplitScale(input[index]),
+    );
+  }
+
+  function getDefaultSplitReframeState(panelCount) {
+    return {
+      offsets: normalizeSplitOffsets([], panelCount),
+      scales: normalizeSplitScales([], panelCount),
+    };
+  }
+
+  function getSplitReframeStateFromOperations(operations, panelCount) {
+    const fallbackState = getDefaultSplitReframeState(panelCount);
+    if (!Array.isArray(operations)) {
+      return fallbackState;
+    }
+
+    for (let index = operations.length - 1; index >= 0; index -= 1) {
+      const step = operations[index];
+      if (step?.type === "splitReframe" && Array.isArray(step.offsets)) {
+        return {
+          offsets: normalizeSplitOffsets(step.offsets, panelCount),
+          scales: normalizeSplitScales(step.scales, panelCount),
+        };
+      }
+    }
+
+    return fallbackState;
+  }
+
+  function isDefaultSplitReframeState(offsets, scales) {
+    const offsetsAreDefault = Array.isArray(offsets)
+      ? offsets.every(
+          (offset) =>
+            Math.abs(Number(offset?.x) || 0) < 0.01 &&
+            Math.abs(Number(offset?.y) || 0) < 0.01,
+        )
+      : true;
+    const scalesAreDefault = Array.isArray(scales)
+      ? scales.every((scale) => Math.abs(clampSplitScale(scale) - 1) < 0.001)
+      : true;
+    return offsetsAreDefault && scalesAreDefault;
+  }
+
+  function buildSplitReframeOperation(offsets, scales) {
+    const panelCount = getSplitPanelCount();
+    return {
+      type: "splitReframe",
+      offsets: normalizeSplitOffsets(offsets, panelCount).map((offset) => ({
+        x: Number(offset.x.toFixed(2)),
+        y: Number(offset.y.toFixed(2)),
+      })),
+      scales: normalizeSplitScales(scales, panelCount).map((scale) =>
+        Number(scale.toFixed(4)),
+      ),
+    };
+  }
+
+  function getOperationsWithoutSplitReframe(operations) {
+    return Array.isArray(operations)
+      ? operations.filter((step) => step?.type !== "splitReframe")
+      : [];
+  }
+
+  function composeSplitCanvasFromOffsets(offsets, scales = splitScales) {
+    if (!splitReframeEnabled || splitSourceImages.length === 0) {
+      return null;
+    }
+
+    const { width, height } = getSplitCanvasDimensions();
+    const panelCount = getSplitPanelCount();
+    const panelRects = buildSplitPanelRects(width, height, panelCount);
+    const safeOffsets = normalizeSplitOffsets(offsets, panelCount);
+    const safeScales = normalizeSplitScales(scales, panelCount);
+    const nextCanvas = createCanvas(width, height);
+    const nextContext = nextCanvas.getContext("2d");
+    if (!nextContext) {
+      return null;
+    }
+
+    nextContext.fillStyle = "#ffffff";
+    nextContext.fillRect(0, 0, width, height);
+
+    panelRects.forEach((panelRect, panelIndex) => {
+      const source = splitSourceImages[panelIndex];
+      if (!source) {
+        return;
+      }
+
+      const crop = getSplitSourceCropForPanel(panelIndex, panelRect);
+      if (!crop) {
+        return;
+      }
+
+      const panelScale = safeScales[panelIndex] || 1;
+      const scaledSrcWidth = clamp(
+        crop.srcWidth / panelScale,
+        1,
+        source.width,
+      );
+      const scaledSrcHeight = clamp(
+        crop.srcHeight / panelScale,
+        1,
+        source.height,
+      );
+      const maxOffsetX = Math.max(0, (source.width - scaledSrcWidth) / 2);
+      const maxOffsetY = Math.max(0, (source.height - scaledSrcHeight) / 2);
+      const baseCenterX = (source.width - scaledSrcWidth) / 2;
+      const baseCenterY = (source.height - scaledSrcHeight) / 2;
+
+      const rawOffset = safeOffsets[panelIndex] || { x: 0, y: 0 };
+      const offsetX = clamp(rawOffset.x, -maxOffsetX, maxOffsetX);
+      const offsetY = clamp(rawOffset.y, -maxOffsetY, maxOffsetY);
+      const srcX = clamp(baseCenterX + offsetX, 0, source.width - scaledSrcWidth);
+      const srcY = clamp(baseCenterY + offsetY, 0, source.height - scaledSrcHeight);
+
+      nextContext.drawImage(
+        source,
+        srcX,
+        srcY,
+        scaledSrcWidth,
+        scaledSrcHeight,
+        panelRect.x,
+        panelRect.y,
+        panelRect.width,
+        panelRect.height,
+      );
+    });
+
+    return nextCanvas;
+  }
+
+  async function initializeSplitReframeState(meta, operations) {
+    splitReframeEnabled = false;
+    splitSourceImages = [];
+    splitOffsets = [];
+    splitScales = [];
+    splitHoverPanelIndex = -1;
+    splitDragPanelIndex = -1;
+    splitDragPointerId = null;
+    splitDragStartImagePoint = null;
+    splitDragStartOffset = null;
+
+    if (!meta?.isSplitScreen || !Array.isArray(meta.splitImages)) {
+      return;
+    }
+
+    const panelCount = meta.splitLayout === 3 ? 3 : 2;
+    if (meta.splitImages.length < panelCount) {
+      return;
+    }
+
+    const loadedSources = await Promise.all(
+      meta.splitImages
+        .slice(0, panelCount)
+        .map((item) => loadImage(item.imageUrl || item.thumbnailUrl || "")),
+    );
+
+    splitSourceImages = loadedSources;
+    const splitState = getSplitReframeStateFromOperations(operations, panelCount);
+    splitOffsets = splitState.offsets;
+    splitScales = splitState.scales;
+    splitReframeEnabled = true;
+  }
+
   function drawSelectionOverlay() {
     overlayContext.clearRect(0, 0, overlayEl.width, overlayEl.height);
+
+    if (
+      splitReframeEnabled &&
+      renderBox &&
+      !cropMode &&
+      !backgroundMode &&
+      !colorAdjustMode &&
+      !eraserMode
+    ) {
+      const panelCount = getSplitPanelCount();
+      const sectionWidth = renderBox.drawWidth / Math.max(1, panelCount);
+      overlayContext.save();
+      overlayContext.lineWidth = 1;
+      overlayContext.strokeStyle = "rgba(255, 255, 255, 0.85)";
+
+      for (let index = 1; index < panelCount; index += 1) {
+        const x = renderBox.x + sectionWidth * index;
+        overlayContext.beginPath();
+        overlayContext.moveTo(x + 0.5, renderBox.y);
+        overlayContext.lineTo(x + 0.5, renderBox.y + renderBox.drawHeight);
+        overlayContext.stroke();
+      }
+
+      const highlightIndex =
+        splitDragPanelIndex >= 0
+          ? splitDragPanelIndex
+          : splitHoverPanelIndex >= 0
+            ? splitHoverPanelIndex
+            : splitSelectedPanelIndex;
+      if (highlightIndex >= 0) {
+        overlayContext.fillStyle = "rgba(255, 255, 255, 0.14)";
+        overlayContext.fillRect(
+          renderBox.x + sectionWidth * highlightIndex,
+          renderBox.y,
+          sectionWidth,
+          renderBox.drawHeight,
+        );
+      }
+      overlayContext.restore();
+    }
 
     if (!currentSelection) {
       drawEraserCursor();
@@ -1304,6 +1656,433 @@ export function createImageEditorController({
     };
   }
 
+  function getSplitPanelIndexAtImagePoint(imagePoint) {
+    if (!imagePoint || !splitReframeEnabled || !workingCanvas) {
+      return -1;
+    }
+
+    const panelCount = getSplitPanelCount();
+    if (panelCount <= 0) {
+      return -1;
+    }
+
+    const sectionWidth = workingCanvas.width / panelCount;
+    if (!Number.isFinite(sectionWidth) || sectionWidth <= 0) {
+      return -1;
+    }
+
+    const rawIndex = Math.floor(imagePoint.x / sectionWidth);
+    return clamp(rawIndex, 0, panelCount - 1);
+  }
+
+  function canUseSplitReframe() {
+    if (!splitReframeEnabled || !workingCanvas || !renderBox) {
+      return false;
+    }
+
+    const nonSplitOps = getOperationsWithoutSplitReframe(operationHistory);
+    return nonSplitOps.length === 0 && !editTaskInProgress && !cutoutInProgress;
+  }
+
+  function getActiveSplitPanelIndex() {
+    if (splitDragPanelIndex >= 0) {
+      return splitDragPanelIndex;
+    }
+    if (splitHoverPanelIndex >= 0) {
+      return splitHoverPanelIndex;
+    }
+    if (splitSelectedPanelIndex >= 0) {
+      return splitSelectedPanelIndex;
+    }
+    return splitReframeEnabled ? 0 : -1;
+  }
+
+  function setSplitPanelSelection(panelIndex) {
+    splitSelectedPanelIndex = panelIndex;
+  }
+
+  function clampSplitOffsetForPanel(panelIndex, offset, scaleValue) {
+    const panelCount = getSplitPanelCount();
+    const { width, height } = getSplitCanvasDimensions();
+    const panelRect = buildSplitPanelRects(width, height, panelCount)[panelIndex];
+    const crop = getSplitSourceCropForPanel(panelIndex, panelRect);
+    const source = splitSourceImages[panelIndex];
+    if (!crop || !source) {
+      return { x: 0, y: 0 };
+    }
+
+    const panelScale = clampSplitScale(scaleValue);
+    const scaledSrcWidth = clamp(crop.srcWidth / panelScale, 1, source.width);
+    const scaledSrcHeight = clamp(crop.srcHeight / panelScale, 1, source.height);
+    const maxOffsetX = Math.max(0, (source.width - scaledSrcWidth) / 2);
+    const maxOffsetY = Math.max(0, (source.height - scaledSrcHeight) / 2);
+
+    return {
+      x: clamp(Number(offset?.x) || 0, -maxOffsetX, maxOffsetX),
+      y: clamp(Number(offset?.y) || 0, -maxOffsetY, maxOffsetY),
+    };
+  }
+
+  async function commitSplitReframeState() {
+    operationHistory = getOperationsWithoutSplitReframe(operationHistory);
+    if (!isDefaultSplitReframeState(splitOffsets, splitScales)) {
+      operationHistory.push(buildSplitReframeOperation(splitOffsets, splitScales));
+    }
+
+    redoHistory = [];
+    hasEdits = operationHistory.length > 0;
+    syncSessionSnapshotAfterEdit();
+    await emitEditorChange();
+  }
+
+  function applySplitReframeStateToCanvas() {
+    const splitCanvas = composeSplitCanvasFromOffsets(splitOffsets, splitScales);
+    if (splitCanvas) {
+      workingCanvas = splitCanvas;
+    }
+    hasEdits = !isDefaultSplitReframeState(splitOffsets, splitScales);
+  }
+
+  async function nudgeSplitPanel(panelIndex, deltaX, deltaY) {
+    if (!canUseSplitReframe() || panelIndex < 0) {
+      return;
+    }
+
+    const panelCount = getSplitPanelCount();
+    const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
+    const nextScales = normalizeSplitScales(splitScales, panelCount);
+    const currentOffset = nextOffsets[panelIndex] || { x: 0, y: 0 };
+    const unclampedOffset = {
+      x: currentOffset.x + deltaX,
+      y: currentOffset.y + deltaY,
+    };
+    nextOffsets[panelIndex] = clampSplitOffsetForPanel(
+      panelIndex,
+      unclampedOffset,
+      nextScales[panelIndex],
+    );
+
+    splitOffsets = nextOffsets;
+    splitScales = nextScales;
+    setSplitPanelSelection(panelIndex);
+    applySplitReframeStateToCanvas();
+    await commitSplitReframeState();
+    render();
+  }
+
+  async function zoomSplitPanel(panelIndex, zoomFactor) {
+    if (!canUseSplitReframe() || panelIndex < 0) {
+      return;
+    }
+
+    const panelCount = getSplitPanelCount();
+    const nextScales = normalizeSplitScales(splitScales, panelCount);
+    const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
+
+    nextScales[panelIndex] = clampSplitScale(nextScales[panelIndex] * zoomFactor);
+    nextOffsets[panelIndex] = clampSplitOffsetForPanel(
+      panelIndex,
+      nextOffsets[panelIndex],
+      nextScales[panelIndex],
+    );
+
+    splitOffsets = nextOffsets;
+    splitScales = nextScales;
+    setSplitPanelSelection(panelIndex);
+    applySplitReframeStateToCanvas();
+    await commitSplitReframeState();
+    render();
+  }
+
+  function beginSplitReframeDrag(event) {
+    if (!canUseSplitReframe()) {
+      return false;
+    }
+
+    const imagePoint = pointerToImagePoint(event);
+    if (!imagePoint) {
+      return false;
+    }
+
+    const panelIndex = getSplitPanelIndexAtImagePoint(imagePoint);
+    if (panelIndex < 0) {
+      return false;
+    }
+
+    setSplitPanelSelection(panelIndex);
+    splitHoverPanelIndex = panelIndex;
+    splitDragPanelIndex = panelIndex;
+    splitDragPointerId = event.pointerId;
+    splitDragStartImagePoint = imagePoint;
+    splitDragStartOffset = {
+      ...(splitOffsets[panelIndex] || { x: 0, y: 0 }),
+    };
+    overlayEl.setPointerCapture(event.pointerId);
+    render();
+    return true;
+  }
+
+  function updateSplitReframeDrag(event) {
+    const imagePoint = pointerToImagePoint(event);
+    if (!imagePoint) {
+      return false;
+    }
+
+    splitHoverPanelIndex = getSplitPanelIndexAtImagePoint(imagePoint);
+    if (
+      splitDragPointerId !== event.pointerId ||
+      splitDragPanelIndex < 0 ||
+      !splitDragStartImagePoint ||
+      !splitDragStartOffset ||
+      !canUseSplitReframe()
+    ) {
+      render();
+      return false;
+    }
+
+    const panelCount = getSplitPanelCount();
+    const { width, height } = getSplitCanvasDimensions();
+    const panelRects = buildSplitPanelRects(width, height, panelCount);
+    const panelRect = panelRects[splitDragPanelIndex];
+    const crop = getSplitSourceCropForPanel(splitDragPanelIndex, panelRect);
+    if (!crop) {
+      return false;
+    }
+
+    const panelScale = splitScales[splitDragPanelIndex] || 1;
+    const scaledSrcWidth = clamp(
+      crop.srcWidth / panelScale,
+      1,
+      splitSourceImages[splitDragPanelIndex]?.width || crop.srcWidth,
+    );
+    const scaledSrcHeight = clamp(
+      crop.srcHeight / panelScale,
+      1,
+      splitSourceImages[splitDragPanelIndex]?.height || crop.srcHeight,
+    );
+    const maxOffsetX = Math.max(0, (splitSourceImages[splitDragPanelIndex].width - scaledSrcWidth) / 2);
+    const maxOffsetY = Math.max(0, (splitSourceImages[splitDragPanelIndex].height - scaledSrcHeight) / 2);
+
+    const dx = imagePoint.x - splitDragStartImagePoint.x;
+    const dy = imagePoint.y - splitDragStartImagePoint.y;
+    const scaleX = scaledSrcWidth / Math.max(1, panelRect.width);
+    const scaleY = scaledSrcHeight / Math.max(1, panelRect.height);
+    const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
+
+    nextOffsets[splitDragPanelIndex] = {
+      x: clamp(
+        splitDragStartOffset.x - dx * scaleX,
+        -maxOffsetX,
+        maxOffsetX,
+      ),
+      y: clamp(
+        splitDragStartOffset.y - dy * scaleY,
+        -maxOffsetY,
+        maxOffsetY,
+      ),
+    };
+
+    splitOffsets = nextOffsets;
+    applySplitReframeStateToCanvas();
+    render();
+    return true;
+  }
+
+  async function finishSplitReframeDrag(event) {
+    const wasDragging = splitDragPointerId === event.pointerId;
+    if (!wasDragging) {
+      return false;
+    }
+
+    if (overlayEl.hasPointerCapture(event.pointerId)) {
+      overlayEl.releasePointerCapture(event.pointerId);
+    }
+
+    splitDragPanelIndex = -1;
+    splitDragPointerId = null;
+    splitDragStartImagePoint = null;
+    splitDragStartOffset = null;
+
+    if (!canUseSplitReframe()) {
+      render();
+      return true;
+    }
+
+    await commitSplitReframeState();
+    render();
+    return true;
+  }
+
+  async function handleSplitReframeWheel(event) {
+    if (!canUseSplitReframe()) {
+      return;
+    }
+
+    const imagePoint = pointerToImagePoint(event);
+    if (!imagePoint) {
+      return;
+    }
+
+    const panelIndex = getSplitPanelIndexAtImagePoint(imagePoint);
+    if (panelIndex < 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const panelCount = getSplitPanelCount();
+    const { width, height } = getSplitCanvasDimensions();
+    const panelRect = buildSplitPanelRects(width, height, panelCount)[panelIndex];
+    const crop = getSplitSourceCropForPanel(panelIndex, panelRect);
+    const source = splitSourceImages[panelIndex];
+    if (!crop || !source) {
+      return;
+    }
+
+    const zoomFactor = event.deltaY < 0 ? 1.08 : 1 / 1.08;
+    const nextScales = normalizeSplitScales(splitScales, panelCount);
+    nextScales[panelIndex] = clampSplitScale(nextScales[panelIndex] * zoomFactor);
+
+    const scaledSrcWidth = clamp(crop.srcWidth / nextScales[panelIndex], 1, source.width);
+    const scaledSrcHeight = clamp(crop.srcHeight / nextScales[panelIndex], 1, source.height);
+    const maxOffsetX = Math.max(0, (source.width - scaledSrcWidth) / 2);
+    const maxOffsetY = Math.max(0, (source.height - scaledSrcHeight) / 2);
+
+    const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
+    nextOffsets[panelIndex] = {
+      x: clamp(nextOffsets[panelIndex].x, -maxOffsetX, maxOffsetX),
+      y: clamp(nextOffsets[panelIndex].y, -maxOffsetY, maxOffsetY),
+    };
+
+    splitScales = nextScales;
+    splitOffsets = nextOffsets;
+
+    setSplitPanelSelection(panelIndex);
+    applySplitReframeStateToCanvas();
+    await commitSplitReframeState();
+    render();
+  }
+
+  function updateSplitTouchPointer(event) {
+    if (!isTouchPointerEvent(event) || !canUseSplitReframe()) {
+      return;
+    }
+
+    splitTouchPointers.set(event.pointerId, clampPointToRenderBox(pointerToCanvasPoint(event)));
+  }
+
+  function removeSplitTouchPointer(event) {
+    if (!isTouchPointerEvent(event)) {
+      return;
+    }
+
+    splitTouchPointers.delete(event.pointerId);
+    if (splitTouchPointers.size < 2) {
+      splitPinchStart = null;
+    }
+  }
+
+  function getTwoSplitTouchPoints() {
+    if (splitTouchPointers.size < 2) {
+      return null;
+    }
+
+    const pointers = [...splitTouchPointers.values()];
+    return [pointers[0], pointers[1]];
+  }
+
+  function beginSplitPinchGesture() {
+    if (!canUseSplitReframe()) {
+      return false;
+    }
+
+    const points = getTwoSplitTouchPoints();
+    if (!points) {
+      return false;
+    }
+
+    const [firstPoint, secondPoint] = points;
+    const distance = Math.hypot(
+      secondPoint.x - firstPoint.x,
+      secondPoint.y - firstPoint.y,
+    );
+    if (!Number.isFinite(distance) || distance < 1) {
+      return false;
+    }
+
+    const midpointCanvas = {
+      x: (firstPoint.x + secondPoint.x) / 2,
+      y: (firstPoint.y + secondPoint.y) / 2,
+    };
+    const midpointImage = {
+      x: clamp(
+        (midpointCanvas.x - renderBox.x) / renderBox.scale,
+        0,
+        workingCanvas.width,
+      ),
+      y: clamp(
+        (midpointCanvas.y - renderBox.y) / renderBox.scale,
+        0,
+        workingCanvas.height,
+      ),
+    };
+    const panelIndex = getSplitPanelIndexAtImagePoint(midpointImage);
+    if (panelIndex < 0) {
+      return false;
+    }
+
+    splitPinchStart = {
+      panelIndex,
+      distance,
+      scale: splitScales[panelIndex] || 1,
+    };
+    setSplitPanelSelection(panelIndex);
+    splitDragPanelIndex = -1;
+    splitDragPointerId = null;
+    splitDragStartImagePoint = null;
+    splitDragStartOffset = null;
+    return true;
+  }
+
+  async function applySplitPinchGesture() {
+    if (!splitPinchStart || !canUseSplitReframe()) {
+      return false;
+    }
+
+    const points = getTwoSplitTouchPoints();
+    if (!points) {
+      return false;
+    }
+
+    const [firstPoint, secondPoint] = points;
+    const distance = Math.hypot(
+      secondPoint.x - firstPoint.x,
+      secondPoint.y - firstPoint.y,
+    );
+    if (!Number.isFinite(distance) || distance < 1) {
+      return false;
+    }
+
+    const panelIndex = splitPinchStart.panelIndex;
+    const scaleRatio = distance / Math.max(1, splitPinchStart.distance);
+    const panelCount = getSplitPanelCount();
+    const nextScales = normalizeSplitScales(splitScales, panelCount);
+    const nextOffsets = normalizeSplitOffsets(splitOffsets, panelCount);
+    nextScales[panelIndex] = clampSplitScale(splitPinchStart.scale * scaleRatio);
+    nextOffsets[panelIndex] = clampSplitOffsetForPanel(
+      panelIndex,
+      nextOffsets[panelIndex],
+      nextScales[panelIndex],
+    );
+
+    splitScales = nextScales;
+    splitOffsets = nextOffsets;
+    applySplitReframeStateToCanvas();
+    await commitSplitReframeState();
+    render();
+    return true;
+  }
+
   function eraseStrokeOnCanvas(points, brushSize) {
     if (!workingCanvas || !Array.isArray(points) || !points.length) {
       return;
@@ -1419,6 +2198,7 @@ export function createImageEditorController({
 
   function handlePointerDown(event) {
     updateTouchPointerPosition(event);
+    updateSplitTouchPointer(event);
 
     if (isTouchPointerEvent(event) && (cropMode || eraserMode)) {
       event.preventDefault();
@@ -1427,6 +2207,30 @@ export function createImageEditorController({
     if (eraserMode) {
       eraserCursorPoint = clampPointToRenderBox(pointerToCanvasPoint(event));
       beginEraserStroke(event);
+      return;
+    }
+
+    if (
+      splitReframeEnabled &&
+      !cropMode &&
+      !backgroundMode &&
+      !colorAdjustMode &&
+      !eraserMode &&
+      isTouchPointerEvent(event) &&
+      splitTouchPointers.size >= 2
+    ) {
+      event.preventDefault();
+      beginSplitPinchGesture();
+      return;
+    }
+
+    if (
+      !cropMode &&
+      !backgroundMode &&
+      !colorAdjustMode &&
+      !eraserMode &&
+      beginSplitReframeDrag(event)
+    ) {
       return;
     }
 
@@ -1486,6 +2290,7 @@ export function createImageEditorController({
 
   function handlePointerMove(event) {
     updateTouchPointerPosition(event);
+    updateSplitTouchPointer(event);
 
     if (
       isTouchPointerEvent(event) &&
@@ -1497,6 +2302,30 @@ export function createImageEditorController({
 
     if (eraserMode) {
       moveEraserStroke(event);
+      return;
+    }
+
+    if (
+      splitReframeEnabled &&
+      !cropMode &&
+      !backgroundMode &&
+      !colorAdjustMode &&
+      !eraserMode &&
+      isTouchPointerEvent(event) &&
+      splitTouchPointers.size >= 2
+    ) {
+      event.preventDefault();
+      if (!splitPinchStart) {
+        beginSplitPinchGesture();
+      }
+      void applySplitPinchGesture();
+      return;
+    }
+
+    if (!cropMode && !backgroundMode && !colorAdjustMode && !eraserMode) {
+      if (splitReframeEnabled) {
+        updateSplitReframeDrag(event);
+      }
       return;
     }
 
@@ -1565,9 +2394,21 @@ export function createImageEditorController({
     }
 
     removeTouchPointer(event);
+    removeSplitTouchPointer(event);
 
     if (eraserMode) {
       await finishEraserStroke(event);
+      return;
+    }
+
+    if (splitPinchStart && splitTouchPointers.size < 2) {
+      splitPinchStart = null;
+      render();
+      return;
+    }
+
+    if (!cropMode && !backgroundMode && !colorAdjustMode && !eraserMode) {
+      await finishSplitReframeDrag(event);
       return;
     }
 
@@ -1599,6 +2440,11 @@ export function createImageEditorController({
   }
 
   function handlePointerLeave() {
+    if (splitReframeEnabled && splitDragPointerId === null) {
+      splitHoverPanelIndex = -1;
+      render();
+    }
+
     if (!eraserMode || eraserStrokeActive) {
       return;
     }
@@ -1825,6 +2671,27 @@ export function createImageEditorController({
   }
 
   async function rebuildWorkingFromOperations(operations) {
+    if (splitReframeEnabled && splitSourceImages.length > 0) {
+      const panelCount = getSplitPanelCount();
+      const splitState = getSplitReframeStateFromOperations(operations, panelCount);
+      splitOffsets = splitState.offsets;
+      splitScales = splitState.scales;
+      const splitBaseCanvas = composeSplitCanvasFromOffsets(
+        splitOffsets,
+        splitScales,
+      );
+      if (!splitBaseCanvas) {
+        return;
+      }
+
+      const nonSplitOperations = getOperationsWithoutSplitReframe(operations);
+      workingCanvas = await applyEditOperationsToCanvas(
+        splitBaseCanvas,
+        nonSplitOperations,
+      );
+      return workingCanvas;
+    }
+
     if (!originalCanvas) {
       await ensureOriginalCanvasLoaded();
     }
@@ -2100,14 +2967,18 @@ export function createImageEditorController({
   }
 
   async function open(meta) {
-    if (!meta?.imageUrl) {
-      throw new Error("No image URL provided for editor.");
+    const hasCanvasSource = meta?.sourceCanvas instanceof HTMLCanvasElement;
+
+    if (!meta?.imageUrl && !hasCanvasSource) {
+      throw new Error("No image source provided for editor.");
     }
 
     const sessionId = ++openSessionId;
-    const sourceUrl = meta.startImageUrl || meta.imageUrl;
-    const workingImage = await loadImage(sourceUrl);
-    const nextWorking = createCanvasFromImage(workingImage);
+    const sourceUrl = meta.startImageUrl || meta.imageUrl || "";
+    const loadedSourceImage = hasCanvasSource ? null : await loadImage(sourceUrl);
+    const nextWorking = hasCanvasSource
+      ? cloneCanvas(meta.sourceCanvas)
+      : createCanvasFromImage(loadedSourceImage);
 
     originalCanvas = null;
     originalCanvasLoadPromise = null;
@@ -2116,10 +2987,19 @@ export function createImageEditorController({
     currentMeta = {
       title: meta.title || "Image editor",
       fileName: meta.fileName || "edited-image.png",
-      imageUrl: meta.imageUrl,
+      imageUrl: meta.imageUrl || "",
       thumbnailUrl: meta.thumbnailUrl || "",
       pageId: Number.isInteger(meta.pageId) ? meta.pageId : null,
       editKey: meta.editKey || "",
+      isSplitScreen: Boolean(meta.isSplitScreen),
+      splitLayout: meta.splitLayout === 3 ? 3 : 2,
+      splitImages: Array.isArray(meta.splitImages) ? meta.splitImages : [],
+      canvasWidth: Number.isFinite(Number(meta.canvasWidth))
+        ? Number(meta.canvasWidth)
+        : null,
+      canvasHeight: Number.isFinite(Number(meta.canvasHeight))
+        ? Number(meta.canvasHeight)
+        : null,
     };
 
     titleEl.textContent = currentMeta.title;
@@ -2130,8 +3010,11 @@ export function createImageEditorController({
             meta.history.map((step) => ({ type: "crop", ...step })),
           )
         : [];
+    await initializeSplitReframeState(currentMeta, operationHistory);
     redoHistory = [];
-    hasEdits = operationHistory.length > 0 || sourceUrl !== meta.imageUrl;
+    hasEdits =
+      operationHistory.length > 0 ||
+      (Boolean(sourceUrl) && Boolean(meta.imageUrl) && sourceUrl !== meta.imageUrl);
     cropMode = false;
     backgroundMode = false;
     colorAdjustMode = false;
@@ -2145,13 +3028,18 @@ export function createImageEditorController({
     activeAspectRatio = parseAspectRatio(aspectRatioSelect?.value || "free");
     isOpen = true;
 
-    if (sourceUrl === meta.imageUrl) {
-      originalCanvas = createCanvasFromImage(workingImage);
+    if (hasCanvasSource) {
+      originalCanvas = cloneCanvas(meta.sourceCanvas);
+    } else if (sourceUrl === meta.imageUrl) {
+      originalCanvas = createCanvasFromImage(loadedSourceImage);
     } else {
       void ensureOriginalCanvasLoaded(sessionId);
     }
 
-    if (operationHistory.length > 0 && sourceUrl === meta.imageUrl) {
+    if (
+      splitReframeEnabled ||
+      (operationHistory.length > 0 && sourceUrl === meta.imageUrl)
+    ) {
       await rebuildWorkingFromHistory();
     }
     const existingColorAdjust =
@@ -2163,6 +3051,11 @@ export function createImageEditorController({
     clearSelection();
     sizeStageCanvases();
     render();
+
+    if (splitReframeEnabled) {
+      const panelHint = getSplitPanelCount() === 2 ? "Left/Right" : "Left/Center/Right";
+      notify(`Split reframe ready. Drag inside ${panelHint} panels to reposition, and use mouse wheel to zoom a panel.`);
+    }
   }
 
   function close() {
@@ -2176,6 +3069,18 @@ export function createImageEditorController({
     eraserStrokePoints = [];
     eraserStrokePointerId = null;
     eraserCursorPoint = null;
+    splitReframeEnabled = false;
+    splitSourceImages = [];
+    splitOffsets = [];
+    splitScales = [];
+    splitSelectedPanelIndex = -1;
+    splitHoverPanelIndex = -1;
+    splitDragPanelIndex = -1;
+    splitDragPointerId = null;
+    splitDragStartImagePoint = null;
+    splitDragStartOffset = null;
+    splitTouchPointers.clear();
+    splitPinchStart = null;
     lastDimensionsText = "";
     lastHistoryInfoText = "";
     if (colorAdjustPreviewRafId) {
@@ -2317,6 +3222,35 @@ export function createImageEditorController({
   overlayEl.addEventListener("pointerup", handlePointerUp);
   overlayEl.addEventListener("pointercancel", handlePointerUp);
   overlayEl.addEventListener("pointerleave", handlePointerLeave);
+  overlayEl.addEventListener("wheel", (event) => {
+    void handleSplitReframeWheel(event);
+  }, { passive: false });
+
+  const splitNudgeStep = 32;
+  splitMoveUpBtn?.addEventListener("click", () => {
+    const panelIndex = getActiveSplitPanelIndex();
+    void nudgeSplitPanel(panelIndex, 0, -splitNudgeStep);
+  });
+  splitMoveDownBtn?.addEventListener("click", () => {
+    const panelIndex = getActiveSplitPanelIndex();
+    void nudgeSplitPanel(panelIndex, 0, splitNudgeStep);
+  });
+  splitMoveLeftBtn?.addEventListener("click", () => {
+    const panelIndex = getActiveSplitPanelIndex();
+    void nudgeSplitPanel(panelIndex, -splitNudgeStep, 0);
+  });
+  splitMoveRightBtn?.addEventListener("click", () => {
+    const panelIndex = getActiveSplitPanelIndex();
+    void nudgeSplitPanel(panelIndex, splitNudgeStep, 0);
+  });
+  splitZoomInBtn?.addEventListener("click", () => {
+    const panelIndex = getActiveSplitPanelIndex();
+    void zoomSplitPanel(panelIndex, 1.08);
+  });
+  splitZoomOutBtn?.addEventListener("click", () => {
+    const panelIndex = getActiveSplitPanelIndex();
+    void zoomSplitPanel(panelIndex, 1 / 1.08);
+  });
 
   backBtn.addEventListener("click", () => {
     close();
