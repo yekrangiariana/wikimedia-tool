@@ -234,7 +234,11 @@
 
 .editor-split-controls-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-areas:
+    ". up . zoomin"
+    "left . right ."
+    ". down . zoomout";
   gap: 6px;
 }
 
@@ -244,6 +248,30 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+#editorSplitMoveUpBtn {
+  grid-area: up;
+}
+
+#editorSplitMoveLeftBtn {
+  grid-area: left;
+}
+
+#editorSplitMoveDownBtn {
+  grid-area: down;
+}
+
+#editorSplitMoveRightBtn {
+  grid-area: right;
+}
+
+#editorSplitZoomInBtn {
+  grid-area: zoomin;
+}
+
+#editorSplitZoomOutBtn {
+  grid-area: zoomout;
 }
 
 #editorCropContent {

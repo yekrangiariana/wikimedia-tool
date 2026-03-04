@@ -150,6 +150,7 @@ export function createImageEditorController({
   backgroundBtn,
   colorAdjustBtn,
   eraserBtn,
+  splitModeBtn,
   applyCropBtn,
   applyBackgroundBtn,
   applyColorAdjustBtn,
@@ -182,6 +183,7 @@ export function createImageEditorController({
   cropHintEl,
   historyInfoEl,
   splitReframeControlsEl,
+  splitEditInFinderBtn,
   splitMoveUpBtn,
   splitMoveDownBtn,
   splitMoveLeftBtn,
@@ -189,6 +191,8 @@ export function createImageEditorController({
   splitZoomInBtn,
   splitZoomOutBtn,
   onBack,
+  onRequestSplitAdd,
+  onRequestSplitEdit,
   onStatus,
   onChange,
 }) {
@@ -229,6 +233,7 @@ export function createImageEditorController({
   let eraserStrokePointerId = null;
   let eraserCursorPoint = null;
   let splitReframeEnabled = false;
+  let splitToolMode = false;
   let splitSourceImages = [];
   let splitOffsets = [];
   let splitScales = [];
@@ -462,6 +467,17 @@ export function createImageEditorController({
       toggleClassIfChanged(eraserBtn, "active-tab", eraserMode);
       setDisabledIfChanged(eraserBtn, isBusy);
     }
+    if (splitModeBtn) {
+      toggleClassIfChanged(splitModeBtn, "active-tab", splitToolMode);
+      setDisabledIfChanged(splitModeBtn, isBusy);
+      const splitButtonLabel = splitModeBtn.querySelector("span");
+      if (splitButtonLabel) {
+        splitButtonLabel.textContent = splitReframeEnabled
+          ? "Split"
+          : "Add split";
+      }
+    }
+
     setDisabledIfChanged(applyCropBtn, !hasSelection || isBusy);
     if (applyBackgroundBtn) {
       setDisabledIfChanged(applyBackgroundBtn, !workingCanvas || isBusy);
@@ -517,6 +533,7 @@ export function createImageEditorController({
     if (splitReframeControlsEl) {
       const showSplitControls =
         splitReframeEnabled &&
+        splitToolMode &&
         !cropMode &&
         !backgroundMode &&
         !colorAdjustMode &&
@@ -534,6 +551,7 @@ export function createImageEditorController({
         splitMoveRightBtn,
         splitZoomInBtn,
         splitZoomOutBtn,
+        splitEditInFinderBtn,
       ].forEach((button) => {
         setDisabledIfChanged(button, controlsDisabled);
       });
@@ -541,6 +559,7 @@ export function createImageEditorController({
 
     if (
       splitReframeEnabled &&
+      splitToolMode &&
       !cropMode &&
       !backgroundMode &&
       !colorAdjustMode &&
@@ -1687,7 +1706,12 @@ export function createImageEditorController({
   }
 
   function canUseSplitReframe() {
-    if (!splitReframeEnabled || !workingCanvas || !renderBox) {
+    if (
+      !splitReframeEnabled ||
+      !splitToolMode ||
+      !workingCanvas ||
+      !renderBox
+    ) {
       return false;
     }
 
@@ -2251,6 +2275,7 @@ export function createImageEditorController({
 
     if (
       splitReframeEnabled &&
+      splitToolMode &&
       !cropMode &&
       !backgroundMode &&
       !colorAdjustMode &&
@@ -2268,6 +2293,7 @@ export function createImageEditorController({
       !backgroundMode &&
       !colorAdjustMode &&
       !eraserMode &&
+      splitToolMode &&
       beginSplitReframeDrag(event)
     ) {
       return;
@@ -2346,6 +2372,7 @@ export function createImageEditorController({
 
     if (
       splitReframeEnabled &&
+      splitToolMode &&
       !cropMode &&
       !backgroundMode &&
       !colorAdjustMode &&
@@ -2362,7 +2389,7 @@ export function createImageEditorController({
     }
 
     if (!cropMode && !backgroundMode && !colorAdjustMode && !eraserMode) {
-      if (splitReframeEnabled) {
+      if (splitReframeEnabled && splitToolMode) {
         updateSplitReframeDrag(event);
       }
       return;
@@ -2447,7 +2474,9 @@ export function createImageEditorController({
     }
 
     if (!cropMode && !backgroundMode && !colorAdjustMode && !eraserMode) {
-      await finishSplitReframeDrag(event);
+      if (splitToolMode) {
+        await finishSplitReframeDrag(event);
+      }
       return;
     }
 
@@ -2479,7 +2508,7 @@ export function createImageEditorController({
   }
 
   function handlePointerLeave() {
-    if (splitReframeEnabled && splitDragPointerId === null) {
+    if (splitReframeEnabled && splitToolMode && splitDragPointerId === null) {
       splitHoverPanelIndex = -1;
       render();
     }
@@ -3056,6 +3085,7 @@ export function createImageEditorController({
         : [];
     await initializeSplitReframeState(currentMeta, operationHistory);
     redoHistory = [];
+    splitToolMode = splitReframeEnabled;
     hasEdits =
       operationHistory.length > 0 ||
       (Boolean(sourceUrl) &&
@@ -3101,9 +3131,7 @@ export function createImageEditorController({
     if (splitReframeEnabled) {
       const panelHint =
         getSplitPanelCount() === 2 ? "Left/Right" : "Left/Center/Right";
-      notify(
-        `Split reframe ready. Drag inside ${panelHint} panels to reposition, and use mouse wheel to zoom a panel.`,
-      );
+      notify(`Split reframe ready. Press Split to adjust ${panelHint} panels.`);
     }
   }
 
@@ -3114,6 +3142,7 @@ export function createImageEditorController({
     backgroundMode = false;
     colorAdjustMode = false;
     eraserMode = false;
+    splitToolMode = false;
     eraserStrokeActive = false;
     eraserStrokePoints = [];
     eraserStrokePointerId = null;
@@ -3160,6 +3189,7 @@ export function createImageEditorController({
       backgroundMode = false;
       colorAdjustMode = false;
       eraserMode = false;
+      splitToolMode = false;
       eraserCursorPoint = null;
     }
 
@@ -3190,6 +3220,7 @@ export function createImageEditorController({
       cropMode = false;
       colorAdjustMode = false;
       eraserMode = false;
+      splitToolMode = false;
       eraserCursorPoint = null;
       clearSelection();
       clearFixedAspectOverlay();
@@ -3210,6 +3241,7 @@ export function createImageEditorController({
       cropMode = false;
       backgroundMode = false;
       eraserMode = false;
+      splitToolMode = false;
       eraserCursorPoint = null;
       clearSelection();
       clearFixedAspectOverlay();
@@ -3230,6 +3262,7 @@ export function createImageEditorController({
       cropMode = false;
       backgroundMode = false;
       colorAdjustMode = false;
+      splitToolMode = false;
       clearSelection();
       clearFixedAspectOverlay();
       notify("Eraser enabled. Drag on the image to remove areas.");
@@ -3239,6 +3272,66 @@ export function createImageEditorController({
 
     render();
     updateToolbarState();
+  }
+
+  function toggleSplitMode() {
+    if (!splitReframeEnabled) {
+      if (
+        typeof onRequestSplitAdd === "function" &&
+        currentMeta &&
+        !currentMeta.isSplitScreen
+      ) {
+        onRequestSplitAdd({
+          title: currentMeta.title,
+          imageUrl: currentMeta.imageUrl,
+          thumbnailUrl: currentMeta.thumbnailUrl,
+          pageId: currentMeta.pageId,
+          fileName: currentMeta.fileName,
+        });
+      } else {
+        notify("Split controls are available for split images only.");
+      }
+      return;
+    }
+
+    splitToolMode = !splitToolMode;
+    if (splitToolMode) {
+      cropMode = false;
+      backgroundMode = false;
+      colorAdjustMode = false;
+      eraserMode = false;
+      eraserCursorPoint = null;
+      clearSelection();
+      clearFixedAspectOverlay();
+      notify(
+        "Split mode enabled. Drag panels, pinch/wheel to zoom, or use controls.",
+      );
+    }
+
+    render();
+    updateToolbarState();
+  }
+
+  function editSplitInFinder() {
+    if (
+      !currentMeta?.isSplitScreen ||
+      !Array.isArray(currentMeta.splitImages)
+    ) {
+      notify("This image is not a split composition.");
+      return;
+    }
+
+    if (typeof onRequestSplitEdit === "function") {
+      onRequestSplitEdit({
+        splitLayout: currentMeta.splitLayout,
+        splitImages: currentMeta.splitImages,
+        canvasWidth: currentMeta.canvasWidth,
+        canvasHeight: currentMeta.canvasHeight,
+      });
+      return;
+    }
+
+    notify("Split edit handoff is unavailable.");
   }
 
   function handleResize() {
@@ -3319,6 +3412,8 @@ export function createImageEditorController({
   backgroundBtn?.addEventListener("click", toggleBackgroundMode);
   colorAdjustBtn?.addEventListener("click", toggleColorAdjustMode);
   eraserBtn?.addEventListener("click", toggleEraserMode);
+  splitModeBtn?.addEventListener("click", toggleSplitMode);
+  splitEditInFinderBtn?.addEventListener("click", editSplitInFinder);
   applyCropBtn.addEventListener("click", () => {
     void applyCrop();
   });

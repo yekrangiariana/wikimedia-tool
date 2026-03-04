@@ -163,6 +163,7 @@ const editorRemoveBgBtn = document.getElementById("editorRemoveBgBtn");
 const editorBackgroundBtn = document.getElementById("editorBackgroundBtn");
 const editorColorAdjustBtn = document.getElementById("editorColorAdjustBtn");
 const editorEraserBtn = document.getElementById("editorEraserBtn");
+const editorSplitModeBtn = document.getElementById("editorSplitModeBtn");
 const editorApplyCropBtn = document.getElementById("editorApplyCropBtn");
 const editorApplyBackgroundBtn = document.getElementById(
   "editorApplyBackgroundBtn",
@@ -210,6 +211,9 @@ const editorAspectRatioRow = document.getElementById("editorAspectRatioRow");
 const editorHistoryInfo = document.getElementById("editorHistoryInfo");
 const editorSplitReframeControls = document.getElementById(
   "editorSplitReframeControls",
+);
+const editorSplitEditInFinderBtn = document.getElementById(
+  "editorSplitEditInFinderBtn",
 );
 const editorSplitMoveUpBtn = document.getElementById("editorSplitMoveUpBtn");
 const editorSplitMoveDownBtn = document.getElementById(
@@ -320,6 +324,7 @@ const imageEditState = new Map();
 let persistedImageEdits = {};
 let scanningPhotoDate = false;
 let selectedSplitItems = new Map();
+let nextManualSplitSelectionId = -1;
 let selectedGalleryItems = new Map();
 let currentGalleryHistoryId = null;
 let gallerySaveTimer = null;
@@ -475,6 +480,7 @@ const imageEditor = createImageEditorController({
   backgroundBtn: editorBackgroundBtn,
   colorAdjustBtn: editorColorAdjustBtn,
   eraserBtn: editorEraserBtn,
+  splitModeBtn: editorSplitModeBtn,
   applyCropBtn: editorApplyCropBtn,
   applyBackgroundBtn: editorApplyBackgroundBtn,
   applyColorAdjustBtn: editorApplyColorAdjustBtn,
@@ -507,6 +513,7 @@ const imageEditor = createImageEditorController({
   cropHintEl: editorCropHint,
   historyInfoEl: editorHistoryInfo,
   splitReframeControlsEl: editorSplitReframeControls,
+  splitEditInFinderBtn: editorSplitEditInFinderBtn,
   splitMoveUpBtn: editorSplitMoveUpBtn,
   splitMoveDownBtn: editorSplitMoveDownBtn,
   splitMoveLeftBtn: editorSplitMoveLeftBtn,
@@ -514,12 +521,111 @@ const imageEditor = createImageEditorController({
   splitZoomInBtn: editorSplitZoomInBtn,
   splitZoomOutBtn: editorSplitZoomOutBtn,
   onBack: closeImageEditor,
+  onRequestSplitAdd: openFinderSplitFromEditor,
+  onRequestSplitEdit: openFinderWithExistingSplit,
   onStatus: (message) => {
     setStatus(message);
     showActionToast(message);
   },
   onChange: handleEditorImageChange,
 });
+
+function buildSplitSeedFromEditorMeta(meta) {
+  const fallbackId = nextManualSplitSelectionId;
+  nextManualSplitSelectionId -= 1;
+
+  const pageId = Number.isInteger(meta?.pageId) ? meta.pageId : fallbackId;
+  return {
+    pageId,
+    title: meta?.title || "Selected image",
+    imageUrl: meta?.imageUrl || meta?.thumbnailUrl || "",
+    thumbnailUrl: meta?.thumbnailUrl || meta?.imageUrl || "",
+    description: "",
+    author: "",
+    licenseShort: "",
+  };
+}
+
+function openFinderSplitFromEditor(meta) {
+  const splitSeed = buildSplitSeedFromEditorMeta(meta);
+  if (!splitSeed.imageUrl && !splitSeed.thumbnailUrl) {
+    setStatus("This image cannot be added to split mode.");
+    return;
+  }
+
+  settings = {
+    ...settings,
+    splitMode: true,
+    galleryMode: false,
+  };
+  saveSettings();
+  splitModeCheckbox.checked = true;
+  galleryModeCheckbox.checked = false;
+
+  splitLayoutSelect.value = "2";
+  selectedSplitItems.clear();
+  selectedSplitItems.set(splitSeed.pageId, splitSeed);
+
+  closeImageEditor({ restoreSettings: false, syncHash: false });
+  applyGalleryModeUI();
+  applySplitModeUI();
+  updateSplitSelectionList();
+  syncSplitResultSelectionUi();
+  renderResults(currentResults, { append: false });
+  showDetails();
+  setActiveView("finder");
+  setStatus(
+    "First image added to split. Select one more image, then click Combine.",
+  );
+}
+
+function openFinderWithExistingSplit(meta) {
+  const splitImages = Array.isArray(meta?.splitImages) ? meta.splitImages : [];
+  if (!splitImages.length) {
+    setStatus("No split images were found for this item.");
+    return;
+  }
+
+  const splitLayout = splitImages.length >= 3 ? 3 : 2;
+  settings = {
+    ...settings,
+    splitMode: true,
+    galleryMode: false,
+  };
+  saveSettings();
+  splitModeCheckbox.checked = true;
+  galleryModeCheckbox.checked = false;
+
+  splitLayoutSelect.value = String(splitLayout);
+  selectedSplitItems.clear();
+
+  splitImages.slice(0, splitLayout).forEach((item, index) => {
+    const fallbackId = nextManualSplitSelectionId;
+    nextManualSplitSelectionId -= 1;
+    const pageId = Number.isInteger(item?.pageId) ? item.pageId : fallbackId;
+    selectedSplitItems.set(pageId, {
+      pageId,
+      title: item?.title || `Split image ${index + 1}`,
+      imageUrl: item?.imageUrl || item?.thumbnailUrl || "",
+      thumbnailUrl: item?.thumbnailUrl || item?.imageUrl || "",
+      description: "",
+      author: "",
+      licenseShort: "",
+    });
+  });
+
+  closeImageEditor({ restoreSettings: false, syncHash: false });
+  applyGalleryModeUI();
+  applySplitModeUI();
+  updateSplitSelectionList();
+  syncSplitResultSelectionUi();
+  renderResults(currentResults, { append: false });
+  showDetails();
+  setActiveView("finder");
+  setStatus(
+    "Split loaded in Finder. Swap images or adjust layout, then combine again.",
+  );
+}
 
 detailsToggleBtn.addEventListener("click", () => {
   if (!isSmallScreen()) {
