@@ -524,6 +524,20 @@ const imageEditor = createImageEditorController({
   onBack: closeImageEditor,
   onRequestSplitAdd: openFinderSplitFromEditor,
   onRequestSplitEdit: openFinderWithExistingSplit,
+  onDownload: async ({ blob, fileName }) => {
+    const savedToFolder = await exportBlob(blob, fileName);
+    const kb = Math.round(blob.size / 1024);
+    if (savedToFolder) {
+      return {
+        savedToFolder,
+        message: `Saved ${fileName} to ${exportDirectoryName} (${kb}KB).`,
+      };
+    }
+    return {
+      savedToFolder,
+      message: `Downloaded ${fileName} (${kb}KB).`,
+    };
+  },
   onStatus: (message) => {
     setStatus(message);
     showActionToast(message);

@@ -193,6 +193,7 @@ export function createImageEditorController({
   onBack,
   onRequestSplitAdd,
   onRequestSplitEdit,
+  onDownload,
   onStatus,
   onChange,
 }) {
@@ -3024,6 +3025,27 @@ export function createImageEditorController({
     if (!blob) {
       notify("Download failed.");
       return;
+    }
+
+    if (typeof onDownload === "function") {
+      try {
+        const result = await onDownload({
+          blob,
+          fileName: descriptor.fileName,
+          mimeType: descriptor.mimeType,
+          meta: currentMeta,
+        });
+        if (typeof result?.message === "string" && result.message.trim()) {
+          notify(result.message.trim());
+        } else {
+          notify("Image downloaded.");
+        }
+        return;
+      } catch (error) {
+        console.error(error);
+        notify("Download failed.");
+        return;
+      }
     }
 
     const blobUrl = URL.createObjectURL(blob);
